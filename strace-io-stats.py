@@ -50,6 +50,14 @@ def main(argv) :
                   dest="loglevel",
                   default="ERROR"
                   )
+  optparser.add_option('--filter-files',
+                  help="filter for a specific file",
+                  action="store",
+                  type="string",
+                  metavar="REGEX",
+                  dest="filter_files",
+                  default=".*"
+                  )
   (options, args) = optparser.parse_args()
   numeric_loglevel = getattr(logging, options.loglevel.upper(), None)
   if not isinstance(numeric_loglevel, int):
@@ -216,7 +224,8 @@ def main(argv) :
       logging.warning("  " + open_files[fd] + "[" + str(fd) + "]")
   print("STATISTICS:")
   for filename in file_access_stats.keys() :
-    print_file_statistics(file_access_stats[filename])
+    if re.match(options.filter_files, filename) :
+      print_file_statistics(file_access_stats[filename])
 
 if "__main__" == __name__ :
   main(sys.argv)
