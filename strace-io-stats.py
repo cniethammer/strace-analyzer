@@ -58,6 +58,12 @@ def main(argv) :
                   dest="filter_files",
                   default=".*"
                   )
+  optparser.add_option('--unknown-call-stats',
+                  help="print statistics about untracked calls",
+                  action="store_true",
+                  dest="unknown_call_stats",
+                  default=False
+                  )
   (options, args) = optparser.parse_args()
   numeric_loglevel = getattr(logging, options.loglevel.upper(), None)
   if not isinstance(numeric_loglevel, int):
@@ -69,6 +75,7 @@ def main(argv) :
   open_files = dict() # table holding the filenames to open file descriptors
                       # TODO may not be save in parallel when two MPI procs open file with same FD number?
   file_access_stats = dict()
+  unknown_calls = dict()
 
   filename = "stdin"
   fd = 0
@@ -202,10 +209,18 @@ def main(argv) :
         else :
           logging.warning("Unknown line type")
           num_ignored_lines = num_ignored_lines + 1
-          match = re.search(r'(?P<difftime>[0-9]+\.[0-9]+) (?P<func>.*)\(.*\).*=', line)
+          match = re.search(r'(?P<difftime>[0-9]+\.[0-9]+) (?P<func>.*?)\(.*\).*=.*<(?P<time>[0-9]+\.[0-9]+)>', line)
           if match != None :
             logging.debug('{0}'.format(match.groupdict()))
-            logging.warning("Unknown call to {0}".format(match.group('func')))
+            callname = match.group('func')
+            calltime = float(match.group('time'))
+            logging.warning("Unknown call to {0} took {1}".format(callname, calltime))
+            if callname not in unknown_calls :
+              unknown_calls[callname] = dict()
+              unknown_calls[callname]['times'] = []
+              unknown_calls[callname]['count'] = 0
+            unknown_calls[callname]['times'].append(calltime)
+            unknown_calls[callname]['count'] = unknown_calls[callname]['count'] + 1
 
   if num_ignored_lines > 0 :
     logging.warning("Number of ignored lines: {0}".format(num_ignored_lines))
@@ -226,6 +241,15 @@ def main(argv) :
   for filename in file_access_stats.keys() :
     if re.match(options.filter_files, filename) :
       print_file_statistics(file_access_stats[filename])
+  if options.unknown_call_stats :
+    print("HIDDEN STATISTICS:")
+    unknown_call_times = dict()
+    unknown_call_counts = dict()
+    for callname in unknown_calls.keys() :
+      unknown_call_times[callname] = sum(unknown_calls[callname]['times'])
+    print("callname,count,time")
+    for callname, time in sorted(unknown_call_times.items()) :
+      print(",".join([callname, str(unknown_calls[callname]['count']), str(time)]))
 
 if "__main__" == __name__ :
   main(sys.argv)
