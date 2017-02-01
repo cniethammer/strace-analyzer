@@ -85,7 +85,12 @@ def main(argv) :
       for line in f :
         logging.debug("LINE {0}: {1}".format(lineno, line.strip()))
         lineno = lineno + 1
-        if "open(" in line :
+        if "execve" in line :
+          logging.debug("execve")
+          match = re.search(r'(?P<difftime>[0-9]+\.[0-9]+) execve\((.*)\).*= (?P<fd>-?[0-9]+).*<(?P<open_time>[0-9]+\.[0-9]+)>', line)
+          if match :
+            continue
+        elif "open(" in line :
           logging.debug("OPEN:")
           match = re.search(r'(?P<difftime>[0-9]+\.[0-9]+) open\(\"(?P<filename>.*)\", (?P<mode>.*)\).*= (?P<fd>-?[0-9]+).*<(?P<open_time>[0-9]+\.[0-9]+)>', line)
           logging.debug("{0}".format(match.groupdict()))
