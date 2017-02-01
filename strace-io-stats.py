@@ -170,17 +170,17 @@ def main(argv) :
           file_access_stats[filename]['close_times'].append(match.group('close_time'))
 #delete from open file table
           del open_files[fd]
-        elif "write(" in line :
-          logging.debug("WRITE:")
-          match = re.search(r'(?P<difftime>[0-9]+\.[0-9]+) write\((?P<fd>[0-9]+), .*, (?P<size>[0-9]+)\).*= (?P<write_size>-?[0-9]+) <(?P<write_time>[0-9]+\.[0-9]+)>', line)
+        elif "write(" in line or "writev" in line:
+          logging.debug("WRITE(V)(:")
+          match = re.search(r'(?P<difftime>[0-9]+\.[0-9]+) writev?\((?P<fd>[0-9]+), .*, (?P<size>[0-9]+)\).*= (?P<write_size>-?[0-9]+) <(?P<write_time>[0-9]+\.[0-9]+)>', line)
           logging.debug("{0}".format(match.groupdict()))
           fd = int(match.group('fd'))
           filename = open_files[fd]
           file_access_stats[filename]['write_times'].append(float(match.group('write_time')))
           file_access_stats[filename]['write_sizes'].append(int(match.group('write_size')))
-        elif "read(" in line :
-          logging.debug("READ:")
-          match = re.search(r'(?P<difftime>[0-9]+\.[0-9]+) read\((?P<fd>[0-9]+), .*, (?P<size>[0-9]+)\).*= (?P<read_size>-?[0-9]+) <(?P<read_time>[0-9]+\.[0-9]+)>', line)
+        elif "read(" in line or "readv" in line:
+          logging.debug("READ(V):")
+          match = re.search(r'(?P<difftime>[0-9]+\.[0-9]+) readv?\((?P<fd>[0-9]+), .*, (?P<size>[0-9]+)\).*= (?P<read_size>-?[0-9]+) <(?P<read_time>[0-9]+\.[0-9]+)>', line)
           logging.debug("{0}".format(match.groupdict()))
           fd = int(match.group('fd'))
           filename = open_files[fd]
