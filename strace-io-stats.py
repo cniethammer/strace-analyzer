@@ -116,7 +116,7 @@ def main(argv) :
           open_files[fd] = filename
           if filename not in file_access_stats :
             file_access_stats[filename] = new_file_access_stats_entry(filename)
-          file_access_stats[filename]['open_times'].append(match.group('open_time'))
+          file_access_stats[filename]['open_times'].append(float(match.group('open_time')))
           file_access_stats[filename]['open_modes'].append(match.group('mode'))
           file_access_stats[filename]['open_fds'].append(fd)
         elif "eventfd2(" in line :
@@ -130,7 +130,7 @@ def main(argv) :
           open_files[fd] = filename
           if filename not in file_access_stats :
             file_access_stats[filename] = new_file_access_stats_entry(filename)
-          file_access_stats[filename]['open_times'].append(match.group('open_time'))
+          file_access_stats[filename]['open_times'].append(float(match.group('open_time')))
           file_access_stats[filename]['open_modes'].append(match.group('mode'))
           file_access_stats[filename]['open_fds'].append(fd)
         elif "socket(" in line :
@@ -144,7 +144,7 @@ def main(argv) :
           open_files[fd] = filename
           if filename not in file_access_stats :
             file_access_stats[filename] = new_file_access_stats_entry(filename)
-          file_access_stats[filename]['open_times'].append(match.group('open_time'))
+          file_access_stats[filename]['open_times'].append(float(match.group('open_time')))
           file_access_stats[filename]['open_modes'].append(match.group('mode'))
           file_access_stats[filename]['open_fds'].append(fd)
         elif "socketpair(" in line :
@@ -160,7 +160,7 @@ def main(argv) :
           open_files[fd2] = filename
           if filename not in file_access_stats :
             file_access_stats[filename] = new_file_access_stats_entry(filename)
-          file_access_stats[filename]['open_times'].append(match.group('open_time'))
+          file_access_stats[filename]['open_times'].append(float(match.group('open_time')))
           file_access_stats[filename]['open_modes'].append(match.group('mode'))
           file_access_stats[filename]['open_fds'].append([fd1, fd2])
         elif "pipe(" in line :
@@ -176,7 +176,7 @@ def main(argv) :
           open_files[fd2] = filename
           if filename not in file_access_stats :
             file_access_stats[filename] = new_file_access_stats_entry(filename)
-          file_access_stats[filename]['open_times'].append(match.group('open_time'))
+          file_access_stats[filename]['open_times'].append(float(match.group('open_time')))
           file_access_stats[filename]['open_fds'].append([fd1, fd2])
         elif "close(" in line :
           logging.debug("CLOSE:")
@@ -187,7 +187,7 @@ def main(argv) :
             logging.warning("Closing unrecognized file descriptor {0}".format(fd))
             continue
           filename = open_files[fd]
-          file_access_stats[filename]['close_times'].append(match.group('close_time'))
+          file_access_stats[filename]['close_times'].append(float(match.group('close_time')))
 #delete from open file table
           del open_files[fd]
         elif "write(" in line or "writev" in line:
