@@ -17,6 +17,7 @@ import sys
 import optparse
 import re
 import logging
+import statistics
 
           
 def print_file_statistics(filedata) :
@@ -24,6 +25,39 @@ def print_file_statistics(filedata) :
   print("  opens: # = " + str(len(filedata['open_times'])))
   print("  writes: #: " + str(len(filedata['write_times'])) + ", size: " + str(sum(filedata['write_sizes'])) + ", time: " + str(sum(filedata['write_times'])))
   print("  reads: #: " + str(len(filedata['read_times'])) + ", size: " + str(sum(filedata['read_sizes'])) + ", time: " + str(sum(filedata['read_times'])))
+
+def save_file_details(filedata):
+  filename = filedata['filename']
+  writestat_file = filename.replace("/","__") + ".write.stat.txt"
+  readstat_file  = filename.replace("/","__") + ".read.stat.txt"
+  writestat = dict()
+  readstat = dict()
+  for size, time in zip(filedata['write_sizes'], filedata['write_times']) :
+    if size not in writestat :
+      writestat[size] = []
+    writestat[size].append(time)
+  with open(writestat_file, "w+") as f :
+    f.write(",".join(["size", "count", "time_tot", "time_min", "time_max", "time_median", "bw_avg", "bw_min", "bw_max"]) + "\n")
+    for size in sorted(writestat.keys()) :
+      count = len(writestat[size])
+      t_tot = sum(writestat[size])
+      t_min = min(writestat[size])
+      t_max = max(writestat[size])
+      t_median = statistics.median_high(writestat[size])
+      f.write(",".join(map(str, [size, count, t_tot, t_min, t_max, t_median, size * count / t_tot, size / t_max, size / t_min ])) + "\n")
+  for size, time in zip(filedata['read_sizes'], filedata['read_times']) :
+    if size not in readstat :
+      readstat[size] = []
+    readstat[size].append(time)
+  with open(readstat_file, "w+") as f :
+    f.write(",".join(["size", "count", "time_tot", "time_min", "time_max", "time_median", "bw_avg", "bw_min", "bw_max"]) + "\n")
+    for size in sorted(readstat.keys()) :
+      count = len(readstat[size])
+      t_tot = sum(readstat[size])
+      t_min = min(readstat[size])
+      t_max = max(readstat[size])
+      t_median = statistics.median_high(readstat[size])
+      f.write(",".join(map(str, [size, count, t_tot, t_min, t_max, t_median, size * count / t_tot, size / t_max, size / t_min ])) + "\n")
 
 
 def new_file_access_stats_entry(filename) :
@@ -57,6 +91,12 @@ def main(argv) :
                   metavar="REGEX",
                   dest="filter_files",
                   default=".*"
+                  )
+  optparser.add_option('--file-details',
+                  help="save detailed stats for each file",
+                  action="store_true",
+                  dest="file_details",
+                  default=False
                   )
   optparser.add_option('--unknown-call-stats',
                   help="print statistics about untracked calls",
@@ -241,6 +281,8 @@ def main(argv) :
   for filename in file_access_stats.keys() :
     if re.match(options.filter_files, filename) :
       print_file_statistics(file_access_stats[filename])
+      if options.file_details :
+        save_file_details(file_access_stats[filename])
   if options.unknown_call_stats :
     print("HIDDEN STATISTICS:")
     unknown_call_times = dict()
