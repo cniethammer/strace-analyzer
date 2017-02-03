@@ -18,11 +18,18 @@ import optparse
 import re
 import logging
 import statistics
-
           
+
+def print_output_section_title(title) :
+  print('-'*78 + "\n" + title + ":\n" + '-'*78)
+
+def print_output_section_footer(title) :
+  print('-'*78 + "\n")
+
 def print_file_statistics(filedata, formatstr, properties) :
   values = [filedata[p] for p in properties]
   print(formatstr.format(*values))
+
 
 def write_io_details(data, filename) :
   """!@brief Write io statistics to file
@@ -315,7 +322,7 @@ def main(argv) :
     logging.error("Unknown sort-by value '{0}'. Falling back to 'write_time'".format(options.sort_by))
   sorted_filenames = sorted(file_access_stats.values(), reverse=True, key=lambda k : k[options.sort_by])
 
-  print("STATISTICS (sorted by {0}):".format(options.sort_by))
+  print_output_section_title("I/O STATISTICS (sorted by {0})".format(options.sort_by))
   print(formatstr.format(*properties))
   for filedata in sorted_filenames :
     filename = filedata['filename']
@@ -323,15 +330,18 @@ def main(argv) :
       print_file_statistics(file_access_stats[filename], formatstr, properties)
       if options.file_details :
         save_file_details(file_access_stats[filename])
+  print_output_section_footer("I/O STATISTICS")
+
   if options.unknown_call_stats :
-    print("HIDDEN STATISTICS:")
+    print_output_section_title("HIDDEN STATISTICS (sorted by time)")
     unknown_call_times = dict()
     unknown_call_counts = dict()
     for callname in unknown_calls.keys() :
       unknown_call_times[callname] = sum(unknown_calls[callname]['times'])
-    print("callname,count,time")
+    print("{0:16} {1:>12} {2:>12}".format("callname", "count", "time"))
     for callname, time in sorted(unknown_call_times.items()) :
-      print(",".join([callname, str(unknown_calls[callname]['count']), str(time)]))
+      print("{0:16} {1:>12} {2:>12.9}".format(callname, unknown_calls[callname]['count'], time))
+    print_output_section_footer("HIDDEN STATISTICS")
 
 if "__main__" == __name__ :
   main(sys.argv)
