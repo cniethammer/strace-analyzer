@@ -71,6 +71,7 @@ def new_file_access_stats_entry(filename) :
   data['read_times'] = []
   data['read_sizes'] = []
   data['close_times'] = []
+  # cache values for sorting and output
   data['write_time'] = 0.0
   data['write_count'] = 0
   data['write_size'] = 0.0
