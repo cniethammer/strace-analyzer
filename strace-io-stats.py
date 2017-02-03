@@ -20,11 +20,9 @@ import logging
 import statistics
 
           
-def print_file_statistics(filedata) :
-  print(filedata['filename'])
-  print("  opens: # = " + str(len(filedata['open_times'])))
-  print("  writes: #: " + str(len(filedata['write_times'])) + ", size: " + str(sum(filedata['write_sizes'])) + ", time: " + str(sum(filedata['write_times'])))
-  print("  reads: #: " + str(len(filedata['read_times'])) + ", size: " + str(sum(filedata['read_sizes'])) + ", time: " + str(sum(filedata['read_times'])))
+def print_file_statistics(filedata, formatstr, properties) :
+  values = [filedata[p] for p in properties]
+  print(formatstr.format(*values))
 
 def save_file_details(filedata):
   filename = filedata['filename']
@@ -304,16 +302,22 @@ def main(argv) :
     file_access_stats[filename]['read_size'] = sum(file_access_stats[filename]['read_sizes'])
     file_access_stats[filename]['open_time'] = sum(file_access_stats[filename]['open_times'])
     file_access_stats[filename]['open_count'] = len(file_access_stats[filename]['open_times'])
+
   properties = ['write_time', 'write_count', 'write_size', 'read_time', 'read_count', 'read_size', 'open_time', 'open_count']
+  formatstr = '{0}{1}{2}'.format('{',':>8} {'.join(map(str,list(range(len(properties))))),':>8}')
+  formatstr = formatstr + " {{{0}}}".format(len(properties))
   properties.append('filename')
+
   if options.sort_by not in properties :
     logging.error("Unknown sort-by value '{0}'. Falling back to 'write_time'".format(options.sort_by))
   sorted_filenames = sorted(file_access_stats.values(), reverse=True, key=lambda k : k[options.sort_by])
+
   print("STATISTICS (sorted by {0}):".format(options.sort_by))
+  print(formatstr.format(*properties))
   for filedata in sorted_filenames :
     filename = filedata['filename']
     if re.match(options.filter_files, filename) :
-      print_file_statistics(file_access_stats[filename])
+      print_file_statistics(file_access_stats[filename], formatstr, properties)
       if options.file_details :
         save_file_details(file_access_stats[filename])
   if options.unknown_call_stats :
