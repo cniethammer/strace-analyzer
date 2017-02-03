@@ -71,6 +71,14 @@ def new_file_access_stats_entry(filename) :
   data['read_times'] = []
   data['read_sizes'] = []
   data['close_times'] = []
+  data['write_time'] = 0.0
+  data['write_count'] = 0
+  data['write_size'] = 0.0
+  data['read_time'] = 0.0
+  data['read_count'] = 0
+  data['read_size'] = 0.0
+  data['open_time'] = 0.0
+  data['open_count'] = 0
   return data
 
 
@@ -103,6 +111,14 @@ def main(argv) :
                   action="store_true",
                   dest="unknown_call_stats",
                   default=False
+                  )
+  optparser.add_option('--sort-by',
+                  help="Sort results by property, default: write_time",
+                  action="store",
+                  type="string",
+                  metavar="STRING",
+                  dest="sort_by",
+                  default="write_time"
                   )
   (options, args) = optparser.parse_args()
   numeric_loglevel = getattr(logging, options.loglevel.upper(), None)
@@ -277,8 +293,25 @@ def main(argv) :
     logging.warning("There are open files at the end of file processing:")
     for fd in open_files.keys() :
       logging.warning("  " + open_files[fd] + "[" + str(fd) + "]")
-  print("STATISTICS:")
+
+
   for filename in file_access_stats.keys() :
+    file_access_stats[filename]['write_time'] = sum(file_access_stats[filename]['write_times'])
+    file_access_stats[filename]['write_count'] = len(file_access_stats[filename]['write_times'])
+    file_access_stats[filename]['write_size'] = sum(file_access_stats[filename]['write_sizes'])
+    file_access_stats[filename]['read_time'] = sum(file_access_stats[filename]['read_times'])
+    file_access_stats[filename]['read_count'] = len(file_access_stats[filename]['read_times'])
+    file_access_stats[filename]['read_size'] = sum(file_access_stats[filename]['read_sizes'])
+    file_access_stats[filename]['open_time'] = sum(file_access_stats[filename]['open_times'])
+    file_access_stats[filename]['open_count'] = len(file_access_stats[filename]['open_times'])
+  properties = ['write_time', 'write_count', 'write_size', 'read_time', 'read_count', 'read_size', 'open_time', 'open_count']
+  properties.append('filename')
+  if options.sort_by not in properties :
+    logging.error("Unknown sort-by value '{0}'. Falling back to 'write_time'".format(options.sort_by))
+  sorted_filenames = sorted(file_access_stats.values(), reverse=True, key=lambda k : k[options.sort_by])
+  print("STATISTICS (sorted by {0}):".format(options.sort_by))
+  for filedata in sorted_filenames :
+    filename = filedata['filename']
     if re.match(options.filter_files, filename) :
       print_file_statistics(file_access_stats[filename])
       if options.file_details :
