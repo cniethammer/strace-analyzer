@@ -152,17 +152,17 @@ def main(argv) :
     with open(inputfile, 'r') as f :
       lineno=1
       for line in f :
-        logging.debug("LINE {0}: {1}".format(lineno, line.strip()))
+        #logging.debug("LINE {0}: {1}".format(lineno, line.strip()))
         lineno = lineno + 1
         if "execve" in line :
-          logging.debug("execve")
+          #logging.debug("execve")
           match = re.search(r'(?P<difftime>[0-9]+\.[0-9]+) execve\((.*)\).*= (?P<fd>-?[0-9]+).*<(?P<open_time>[0-9]+\.[0-9]+)>', line)
           if match :
             continue
         elif "open(" in line :
-          logging.debug("OPEN:")
+          #logging.debug("OPEN:")
           match = re.search(r'(?P<difftime>[0-9]+\.[0-9]+) open\(\"(?P<filename>.*)\", (?P<mode>.*)\).*= (?P<fd>-?[0-9]+).*<(?P<open_time>[0-9]+\.[0-9]+)>', line)
-          logging.debug("{0}".format(match.groupdict()))
+          #logging.debug("{0}".format(match.groupdict()))
           fd = int(match.group('fd'))
           if fd == -1 :
             continue
@@ -174,9 +174,9 @@ def main(argv) :
           file_access_stats[filename]['open_modes'].append(match.group('mode'))
           file_access_stats[filename]['open_fds'].append(fd)
         elif "eventfd2(" in line :
-          logging.debug("OPEN EVENTFD:")
+          #logging.debug("OPEN EVENTFD:")
           match = re.search(r'(?P<difftime>[0-9]+\.[0-9]+) eventfd2\((?P<mode>.*)\).*= (?P<fd>-?[0-9]+).*<(?P<open_time>[0-9]+\.[0-9]+)>', line)
-          logging.debug("{0}".format(match.groupdict()))
+          #logging.debug("{0}".format(match.groupdict()))
           fd = int(match.group('fd'))
           if fd == -1 :
             continue
@@ -188,9 +188,9 @@ def main(argv) :
           file_access_stats[filename]['open_modes'].append(match.group('mode'))
           file_access_stats[filename]['open_fds'].append(fd)
         elif "socket(" in line :
-          logging.debug("OPEN SOCKET:")
+          #logging.debug("OPEN SOCKET:")
           match = re.search(r'(?P<difftime>[0-9]+\.[0-9]+) socket\((?P<mode>.*)\).*= (?P<fd>-?[0-9]+).*<(?P<open_time>[0-9]+\.[0-9]+)>', line)
-          logging.debug("{0}".format(match.groupdict()))
+          #logging.debug("{0}".format(match.groupdict()))
           fd = int(match.group('fd'))
           if fd == -1 :
             continue
@@ -202,9 +202,9 @@ def main(argv) :
           file_access_stats[filename]['open_modes'].append(match.group('mode'))
           file_access_stats[filename]['open_fds'].append(fd)
         elif "socketpair(" in line :
-          logging.debug("OPEN SOCKET PAIR:")
+          #logging.debug("OPEN SOCKET PAIR:")
           match = re.search(r'(?P<difftime>[0-9]+\.[0-9]+) socketpair\((?P<mode>.*), \[(?P<fd1>[0-9]+), (?P<fd2>[0-9]+)\]\).*= (?P<ret>-?[0-9]+).*<(?P<open_time>[0-9]+\.[0-9]+)>', line)
-          logging.debug("{0}".format(match.groupdict()))
+          #logging.debug("{0}".format(match.groupdict()))
           fd1 = int(match.group('fd1'))
           fd2 = int(match.group('fd2'))
           if match.group('ret') == -1 :
@@ -218,9 +218,9 @@ def main(argv) :
           file_access_stats[filename]['open_modes'].append(match.group('mode'))
           file_access_stats[filename]['open_fds'].append([fd1, fd2])
         elif "pipe(" in line :
-          logging.debug("OPEN PIPE:")
+          #logging.debug("OPEN PIPE:")
           match = re.search(r'(?P<difftime>[0-9]+\.[0-9]+) pipe\(\[(?P<fd1>[0-9]+), (?P<fd2>[0-9]+)\]\).*= (?P<ret>-?[0-9]+).*<(?P<open_time>[0-9]+\.[0-9]+)>', line)
-          logging.debug("{0}".format(match.groupdict()))
+          #logging.debug("{0}".format(match.groupdict()))
           fd1 = int(match.group('fd1'))
           fd2 = int(match.group('fd2'))
           if match.group('ret') == -1 :
@@ -233,9 +233,9 @@ def main(argv) :
           file_access_stats[filename]['open_times'].append(float(match.group('open_time')))
           file_access_stats[filename]['open_fds'].append([fd1, fd2])
         elif "close(" in line :
-          logging.debug("CLOSE:")
+          #logging.debug("CLOSE:")
           match = re.search(r'(?P<difftime>[0-9]+\.[0-9]+) close\((?P<fd>[0-9]+)\).*= (?P<ret>-?[0-9]+).*<(?P<close_time>[0-9]+\.[0-9]+)>', line)
-          logging.debug("{0}".format(match.groupdict()))
+          #logging.debug("{0}".format(match.groupdict()))
           fd = int(match.group('fd'))
           if fd not in open_files :
             logging.warning("Closing unrecognized file descriptor {0}".format(fd))
@@ -245,17 +245,17 @@ def main(argv) :
 #delete from open file table
           del open_files[fd]
         elif "write(" in line or "writev" in line:
-          logging.debug("WRITE(V)(:")
+          #logging.debug("WRITE(V)(:")
           match = re.search(r'(?P<difftime>[0-9]+\.[0-9]+) writev?\((?P<fd>[0-9]+), .*, (?P<size>[0-9]+)\).*= (?P<write_size>-?[0-9]+).*<(?P<write_time>[0-9]+\.[0-9]+)>', line)
-          logging.debug("{0}".format(match.groupdict()))
+          #logging.debug("{0}".format(match.groupdict()))
           fd = int(match.group('fd'))
           filename = open_files[fd]
           file_access_stats[filename]['write_times'].append(float(match.group('write_time')))
           file_access_stats[filename]['write_sizes'].append(int(match.group('write_size')))
         elif "read(" in line or "readv" in line:
-          logging.debug("READ(V):")
+          #logging.debug("READ(V):")
           match = re.search(r'(?P<difftime>[0-9]+\.[0-9]+) readv?\((?P<fd>[0-9]+), .*, (?P<size>[0-9]+)\).*= (?P<read_size>-?[0-9]+).*<(?P<read_time>[0-9]+\.[0-9]+)>', line)
-          logging.debug("{0}".format(match.groupdict()))
+          #logging.debug("{0}".format(match.groupdict()))
           fd = int(match.group('fd'))
           filename = open_files[fd]
           file_access_stats[filename]['read_times'].append(float(match.group('read_time')))
@@ -265,7 +265,7 @@ def main(argv) :
           num_ignored_lines = num_ignored_lines + 1
           match = re.search(r'(?P<difftime>[0-9]+\.[0-9]+) (?P<func>.*?)\(.*\).*=.*<(?P<time>[0-9]+\.[0-9]+)>', line)
           if match != None :
-            logging.debug('{0}'.format(match.groupdict()))
+            #logging.debug('{0}'.format(match.groupdict()))
             callname = match.group('func')
             calltime = float(match.group('time'))
             logging.warning("Unknown call to {0} took {1}".format(callname, calltime))
