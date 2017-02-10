@@ -90,6 +90,20 @@ def new_file_access_stats_entry(filename) :
   return data
 
 
+class OpenFileTracker :
+  def __init__(self) :
+    self.open_files = dict()
+  def register_open(self, filename, fd) :
+    self.open_files[fd] = filename
+  def register_close(self, fd) :
+    del self.open_files[fd]
+  def is_open(self, fd) :
+    return fd in self.open_files
+  def get_filename(self, fd) :
+    return self.open_files[fd]
+  def get_open_files(self)  :
+    return self.open_files
+
 def main(argv) :
   optparser = optparse.OptionParser("usage: %prog [options] STRACE_LOG ...", version="%prog 0.1")
   optparser.add_option('--loglevel',
@@ -136,24 +150,16 @@ def main(argv) :
 
   inputfiles = args
 
-  open_files = dict() # table holding the filenames to open file descriptors
-                      # TODO may not be save in parallel when two MPI procs open file with same FD number?
+  open_file_tracker = OpenFileTracker()
   file_access_stats = dict()
   unknown_calls = dict()
 
-  filename = "stdin"
-  fd = 0
-  open_files[fd] = filename
-  file_access_stats[filename] = new_file_access_stats_entry(filename)
-  filename = "stdout"
-  fd = 1
-  open_files[fd] = filename
-  file_access_stats[filename] = new_file_access_stats_entry(filename)
-  filename = "stderr"
-  fd = 2
-  open_files[fd] = filename
-  file_access_stats[filename] = new_file_access_stats_entry(filename)
-  
+  open_file_tracker.register_open("stdin", 0)
+  file_access_stats["stdin"] = new_file_access_stats_entry("stdin")
+  open_file_tracker.register_open("stdout", 1)
+  file_access_stats["stdout"] = new_file_access_stats_entry("stdout")
+  open_file_tracker.register_open("stderr", 2)
+  file_access_stats["stderr"] = new_file_access_stats_entry("stderr")
   
   num_ignored_lines = 0
 
@@ -177,7 +183,7 @@ def main(argv) :
           if fd == -1 :
             continue
           filename = match.group('filename')
-          open_files[fd] = filename
+          open_file_tracker.register_open(filename, fd)
           if filename not in file_access_stats :
             file_access_stats[filename] = new_file_access_stats_entry(filename)
           file_access_stats[filename]['open_times'].append(float(match.group('open_time')))
@@ -191,7 +197,7 @@ def main(argv) :
           if fd == -1 :
             continue
           filename = '<eventfd>'
-          open_files[fd] = filename
+          open_file_tracker.register_open(filename, fd)
           if filename not in file_access_stats :
             file_access_stats[filename] = new_file_access_stats_entry(filename)
           file_access_stats[filename]['open_times'].append(float(match.group('open_time')))
@@ -205,7 +211,7 @@ def main(argv) :
           if fd == -1 :
             continue
           filename = '<socket>'
-          open_files[fd] = filename
+          open_file_tracker.register_open(filename, fd)
           if filename not in file_access_stats :
             file_access_stats[filename] = new_file_access_stats_entry(filename)
           file_access_stats[filename]['open_times'].append(float(match.group('open_time')))
@@ -220,8 +226,8 @@ def main(argv) :
           if match.group('ret') == -1 :
             continue
           filename = '<socket>'
-          open_files[fd1] = filename
-          open_files[fd2] = filename
+          open_file_tracker.register_open(filename, fd1)
+          open_file_tracker.register_open(filename, fd2)
           if filename not in file_access_stats :
             file_access_stats[filename] = new_file_access_stats_entry(filename)
           file_access_stats[filename]['open_times'].append(float(match.group('open_time')))
@@ -236,8 +242,8 @@ def main(argv) :
           if match.group('ret') == -1 :
             continue
           filename = '<pipe>'
-          open_files[fd1] = filename
-          open_files[fd2] = filename
+          open_file_tracker.register_open(filename, fd1)
+          open_file_tracker.register_open(filename, fd2)
           if filename not in file_access_stats :
             file_access_stats[filename] = new_file_access_stats_entry(filename)
           file_access_stats[filename]['open_times'].append(float(match.group('open_time')))
@@ -247,20 +253,19 @@ def main(argv) :
           match = re.search(r'(?P<difftime>[0-9]+\.[0-9]+) close\((?P<fd>[0-9]+)\).*= (?P<ret>-?[0-9]+).*<(?P<close_time>[0-9]+\.[0-9]+)>', line)
           #logging.debug("{0}".format(match.groupdict()))
           fd = int(match.group('fd'))
-          if fd not in open_files :
+          if not open_file_tracker.is_open(fd) :
             logging.warning("Closing unrecognized file descriptor {0}".format(fd))
             continue
-          filename = open_files[fd]
+          filename = open_file_tracker.get_filename(fd)
           file_access_stats[filename]['close_times'].append(float(match.group('close_time')))
-#delete from open file table
-          del open_files[fd]
+          open_file_tracker.register_close(fd)
         elif "write(" in line or "writev" in line:
           #logging.debug("WRITE(V)(:")
           match = re.search(r'(?P<difftime>[0-9]+\.[0-9]+) writev?\((?P<fd>[0-9]+), .*, (?P<size>[0-9]+)\).*= (?P<write_size>-?[0-9]+).*<(?P<write_time>[0-9]+\.[0-9]+)>', line)
           #logging.debug("{0}".format(match.groupdict()))
           fd = int(match.group('fd'))
-          if fd in open_files :
-            filename = open_files[fd]
+          if open_file_tracker.is_open(fd) :
+            filename = open_file_tracker.get_filename(fd)
             file_access_stats[filename]['write_times'].append(float(match.group('write_time')))
             file_access_stats[filename]['write_sizes'].append(int(match.group('write_size')))
           else :
@@ -270,8 +275,8 @@ def main(argv) :
           match = re.search(r'(?P<difftime>[0-9]+\.[0-9]+) readv?\((?P<fd>[0-9]+), .*, (?P<size>[0-9]+)\).*= (?P<read_size>-?[0-9]+).*<(?P<read_time>[0-9]+\.[0-9]+)>', line)
           #logging.debug("{0}".format(match.groupdict()))
           fd = int(match.group('fd'))
-          if fd in open_files :
-            filename = open_files[fd]
+          if open_file_tracker.is_open(fd) :
+            filename = open_file_tracker.get_filename(fd)
             file_access_stats[filename]['read_times'].append(float(match.group('read_time')))
             file_access_stats[filename]['read_sizes'].append(int(match.group('read_size')))
           else :
@@ -294,15 +299,16 @@ def main(argv) :
 
   if num_ignored_lines > 0 :
     logging.warning("Number of ignored lines: {0}".format(num_ignored_lines))
-  if 0 in open_files :
+  if open_file_tracker.is_open(0) :
     logging.warning("Ignoring open sdtin[0]")
-    del open_files[0]
-  if 1 in open_files :
+    open_file_tracker.register_close(0)
+  if open_file_tracker.is_open(1) :
     logging.warning("Ignoring open sdtout[1]")
-    del open_files[1]
-  if 2 in open_files :
+    open_file_tracker.register_close(1)
+  if open_file_tracker.is_open(2) :
     logging.warning("Ignoring open sdterr[2]")
-    del open_files[2]
+    open_file_tracker.register_close(2)
+  open_files = open_file_tracker.get_open_files()
   if open_files :
     logging.warning("There are open files at the end of file processing:")
     for fd in open_files.keys() :
