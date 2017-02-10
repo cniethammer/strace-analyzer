@@ -259,17 +259,23 @@ def main(argv) :
           match = re.search(r'(?P<difftime>[0-9]+\.[0-9]+) writev?\((?P<fd>[0-9]+), .*, (?P<size>[0-9]+)\).*= (?P<write_size>-?[0-9]+).*<(?P<write_time>[0-9]+\.[0-9]+)>', line)
           #logging.debug("{0}".format(match.groupdict()))
           fd = int(match.group('fd'))
-          filename = open_files[fd]
-          file_access_stats[filename]['write_times'].append(float(match.group('write_time')))
-          file_access_stats[filename]['write_sizes'].append(int(match.group('write_size')))
+          if fd in open_files :
+            filename = open_files[fd]
+            file_access_stats[filename]['write_times'].append(float(match.group('write_time')))
+            file_access_stats[filename]['write_sizes'].append(int(match.group('write_size')))
+          else :
+            logging.warning("No Open file found for file descriptor {}".format(fd))
         elif "read(" in line or "readv" in line:
           #logging.debug("READ(V):")
           match = re.search(r'(?P<difftime>[0-9]+\.[0-9]+) readv?\((?P<fd>[0-9]+), .*, (?P<size>[0-9]+)\).*= (?P<read_size>-?[0-9]+).*<(?P<read_time>[0-9]+\.[0-9]+)>', line)
           #logging.debug("{0}".format(match.groupdict()))
           fd = int(match.group('fd'))
-          filename = open_files[fd]
-          file_access_stats[filename]['read_times'].append(float(match.group('read_time')))
-          file_access_stats[filename]['read_sizes'].append(int(match.group('read_size')))
+          if fd in open_files :
+            filename = open_files[fd]
+            file_access_stats[filename]['read_times'].append(float(match.group('read_time')))
+            file_access_stats[filename]['read_sizes'].append(int(match.group('read_size')))
+          else :
+            logging.warning("No Open file found for file descriptor {}".format(fd))
         else :
           logging.warning("Unknown line type")
           num_ignored_lines = num_ignored_lines + 1
