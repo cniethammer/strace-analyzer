@@ -289,7 +289,7 @@ def main(argv) :
             #logging.debug('{0}'.format(match.groupdict()))
             callname = match.group('func')
             calltime = float(match.group('time'))
-            logging.warning("Unknown call to {0} took {1}".format(callname, calltime))
+            #logging.warning("Unknown call to {0} took {1}".format(callname, calltime))
             if callname not in unknown_calls :
               unknown_calls[callname] = dict()
               unknown_calls[callname]['times'] = []
