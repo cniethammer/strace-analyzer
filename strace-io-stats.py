@@ -169,10 +169,10 @@ def main(argv) :
   for inputfile in inputfiles :
     logging.info("Processing " + str(inputfile) + " ...")
     with open(inputfile, 'r') as f :
-      lineno=1
+      lineno=0
       for line in f :
-        #logging.debug("LINE {0}: {1}".format(lineno, line.strip()))
         lineno = lineno + 1
+        #logging.debug("LINE {0}: {1}".format(lineno, line.strip()))
         if "execve" in line :
           #logging.debug("execve")
           match = re.search(r'(?P<difftime>[0-9]+\.[0-9]+) execve\((.*)\).*= (?P<fd>-?[0-9]+).*<(?P<open_time>[0-9]+\.[0-9]+)>', line)
