@@ -54,6 +54,11 @@ def write_io_details(data, filename) :
       t_median = statistics.median_high(stats[size])
       f.write(",".join(map(str, [size, count, t_tot, t_min, t_max, t_median, size * count / t_tot, size / t_max, size / t_min ])) + "\n")
 
+def write_open_details(filedata, filename) :
+  with open(filename, "w+") as f :
+    f.write(",".join(["opened_from", "count"]) + "\n")
+    for open_from, count in filedata['open_from'].items() :
+      f.write(",".join(map(str, [open_from, count])) + "\n")
 
 def save_file_details(filedata):
   """!@brief Save write and read statistics for the given filedata to files
@@ -68,6 +73,9 @@ def save_file_details(filedata):
   readstat_file = filename.replace("/","__") + ".read.stat.txt"
   readstat_data = zip(filedata['read_sizes'], filedata['read_times'])
   write_io_details(readstat_data, readstat_file)
+  # stats for opens
+  openstat_file = filename.replace("/","__") + ".open.stat.txt"
+  write_open_details(filedata, openstat_file)
 
 
 def new_file_access_stats_entry(filename) :
@@ -76,6 +84,7 @@ def new_file_access_stats_entry(filename) :
   data['open_times'] = []
   data['open_modes'] = []
   data['open_fds'] = []
+  data['open_from'] = dict()
   data['write_times'] = []
   data['write_sizes'] = []
   data['read_times'] = []
@@ -90,6 +99,7 @@ def new_file_access_stats_entry(filename) :
   data['read_size'] = 0.0
   data['open_time'] = 0.0
   data['open_count'] = 0
+  data['open_from_count'] = 0
   return data
 
 
@@ -192,6 +202,9 @@ def main(argv) :
           file_access_stats[filename]['open_times'].append(float(match.group('open_time')))
           file_access_stats[filename]['open_modes'].append(match.group('mode'))
           file_access_stats[filename]['open_fds'].append(fd)
+          if inputfile not in file_access_stats[filename]['open_from'] :
+            file_access_stats[filename]['open_from'][inputfile] = 0
+          file_access_stats[filename]['open_from'][inputfile] = file_access_stats[filename]['open_from'][inputfile] + 1
         elif "eventfd2(" in line :
           #logging.debug("OPEN EVENTFD:")
           match = re.search(r'(?P<difftime>[0-9]+\.[0-9]+) eventfd2\((?P<mode>.*)\).*= (?P<fd>-?[0-9]+).*<(?P<open_time>[0-9]+\.[0-9]+)>', line)
@@ -327,8 +340,9 @@ def main(argv) :
     file_access_stats[filename]['read_size'] = sum(file_access_stats[filename]['read_sizes'])
     file_access_stats[filename]['open_time'] = sum(file_access_stats[filename]['open_times'])
     file_access_stats[filename]['open_count'] = len(file_access_stats[filename]['open_times'])
+    file_access_stats[filename]['open_from_count'] = len(file_access_stats[filename]['open_from'])
 
-  properties = ['write_time', 'write_count', 'write_size', 'read_time', 'read_count', 'read_size', 'open_time', 'open_count']
+  properties = ['write_time', 'write_count', 'write_size', 'read_time', 'read_count', 'read_size', 'open_time', 'open_count', 'open_from_count']
   formatstr = '{0}{1}{2}'.format('{',':>8} {'.join(map(str,list(range(len(properties))))),':>8}')
   formatstr = formatstr + " {{{0}}}".format(len(properties))
   properties.append('filename')
