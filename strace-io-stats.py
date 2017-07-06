@@ -9,10 +9,10 @@
 #
 # usage:
 # --------
-# Generate trace with strace via
-#   strace -r -T ./my_app
-# or use the strace-mpi-wrapper.sh for MPI parallel programs
-#   mpirun [MPI OPTIONS] ./strace-mpi-wrapper.sh APP [APP OPTIONS]
+# Generate trace with strace wrapper
+#   ./strace-wrapper.sh ./my_app [APP OPTIONS]
+# or use the strace-wrapper.sh for MPI parallel programs like
+#   mpirun [MPI OPTIONS] ./strace-wrapper.sh ./my_app [APP OPTIONS]
 # which will generate a set of strace log files, one for each process.
 #
 
