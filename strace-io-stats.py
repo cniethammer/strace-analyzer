@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 #
 # Strace output I/O analyzer.
 #
@@ -17,11 +17,17 @@
 #
 
 import sys
-import optparse
-import re
-import logging
-import statistics
-          
+
+try:
+    import optparse
+    import re
+    import logging
+    import statistics
+except ImportError as e:
+    print("python 3.4 or greater required, found %s" % sys.version)
+    raise ImportError(e)
+    sys.exit(1)
+
 
 def print_output_section_title(title) :
   print('-'*78 + "\n" + title + ":\n" + '-'*78)
