@@ -5,7 +5,7 @@ It traces the system calls and generates statistics for every accessed file.
 
 ## Getting Started
 
-### Prerequisits
+### Prerequisites
 The strace output I/O analyzer requires
 - strace to generate traces
 - python 3.4 or greater to analyze the traces
