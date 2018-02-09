@@ -181,6 +181,7 @@ def main(argv) :
   file_access_stats["stderr"] = new_file_access_stats_entry("stderr")
   
   num_ignored_lines = 0
+  unfinished = dict()
 
   for inputfile in inputfiles :
     logging.info("Processing " + str(inputfile) + " ...")
@@ -189,6 +190,15 @@ def main(argv) :
       for line in f :
         lineno = lineno + 1
         #logging.debug("LINE {0}: {1}".format(lineno, line.strip()))
+        if "<unfinished ...>" in line :
+          pid = int(line.split()[0])
+          unfinished[pid] = line[:-len(" <unfinished ...>")].rstrip()
+          continue
+        elif " resumed> " in line :
+          pid = int(line.split()[0])
+          rest = line[line.find(" resumed> ")+len(" resumed> "):].rstrip()
+          line = unfinished[pid] + rest
+          del unfinished[pid]
         if "execve" in line :
           #logging.debug("execve")
           match = re.search(r'(?P<difftime>[0-9]+\.[0-9]+) execve\((.*)\).*= (?P<fd>-?[0-9]+).*<(?P<open_time>[0-9]+\.[0-9]+)>', line)
