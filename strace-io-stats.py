@@ -190,6 +190,8 @@ def main(argv) :
       for line in f :
         lineno = lineno + 1
         #logging.debug("LINE {0}: {1}".format(lineno, line.strip()))
+        if "ERESTARTSYS" in line :
+          continue
         if "<unfinished ...>" in line :
           pid = int(line.split()[0])
           unfinished[pid] = line[:-len(" <unfinished ...>")].rstrip()
@@ -293,7 +295,7 @@ def main(argv) :
           open_file_tracker.register_close(fd)
         elif "write(" in line or "writev(" in line:
           #logging.debug("WRITE(V)(:")
-          match = re.search(r'(?P<difftime>[0-9]+\.[0-9]+) p?writev?\((?P<fd>[0-9]+), .*, (?P<size>[0-9]+)\).*= (?P<write_size>-?[0-9]+).*<(?P<write_time>[0-9]+\.[0-9]+)>', line)
+          match = re.search(r'(?P<difftime>[0-9]+\.[0-9]+) p?writev?\((?P<fd>[0-9]+), ?.*, (?P<size>[0-9]+)\).*= (?P<write_size>-?[0-9]+).*<(?P<write_time>[0-9]+\.[0-9]+)>', line)
           #logging.debug("{0}".format(match.groupdict()))
           fd = int(match.group('fd'))
           if open_file_tracker.is_open(fd) :
@@ -304,7 +306,7 @@ def main(argv) :
             logging.warning("No Open file found for file descriptor {}".format(fd))
         elif "read(" in line or "readv(" in line:
           #logging.debug("READ(V):")
-          match = re.search(r'(?P<difftime>[0-9]+\.[0-9]+) p?readv?\((?P<fd>[0-9]+), .*, (?P<size>[0-9]+)\).*= (?P<read_size>-?[0-9]+).*<(?P<read_time>[0-9]+\.[0-9]+)>', line)
+          match = re.search(r'(?P<difftime>[0-9]+\.[0-9]+) p?readv?\((?P<fd>[0-9]+), ?.*, (?P<size>[0-9]+)\).*= (?P<read_size>-?[0-9]+).*<(?P<read_time>[0-9]+\.[0-9]+)>', line)
           #logging.debug("{0}".format(match.groupdict()))
           fd = int(match.group('fd'))
           if open_file_tracker.is_open(fd) :
