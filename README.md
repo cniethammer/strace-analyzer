@@ -11,7 +11,8 @@ The strace output I/O analyzer requires
 - python 3.4 or greater to analyze the traces
 
 ### Installation
-Just clone the directory and use the scripts. No additional steps required.
+Just clone the directory from https://github.com/cniethammer/strace-analyzer and use the scripts.
+No additional steps required.
 
 ### Usage:
 #### Trace Generation
