@@ -241,6 +241,26 @@ def main(argv) :
           if inputfile not in file_access_stats[filename]['open_from'] :
             file_access_stats[filename]['open_from'][inputfile] = 0
           file_access_stats[filename]['open_from'][inputfile] = file_access_stats[filename]['open_from'][inputfile] + 1
+        elif "openat(" in line :
+          #logging.debug("OPEN:")
+          match = re.search(r'(?P<difftime>[0-9]+\.[0-9]+) openat\((?P<dirfd>.*), \"(?P<filename>.*)\", (?P<mode>.*)\).*= (?P<fd>-?[0-9]+).*<(?P<open_time>[0-9]+\.[0-9]+)>', line)
+          #logging.debug("{0}".format(match.groupdict()))
+          fd = int(match.group('fd'))
+          if fd == -1 :
+            continue
+          filename = match.group('filename')
+          dirfd = match.group('dirfd')
+          if dirfd != "AT_FDCWD":
+            filename = open_file_tracker.get_filename(int(dirfd)) + "/" + filename
+          open_file_tracker.register_open(filename, fd)
+          if filename not in file_access_stats :
+            file_access_stats[filename] = new_file_access_stats_entry(filename)
+          file_access_stats[filename]['open_times'].append(float(match.group('open_time')))
+          file_access_stats[filename]['open_modes'].append(match.group('mode'))
+          file_access_stats[filename]['open_fds'].append(fd)
+          if inputfile not in file_access_stats[filename]['open_from'] :
+            file_access_stats[filename]['open_from'][inputfile] = 0
+          file_access_stats[filename]['open_from'][inputfile] = file_access_stats[filename]['open_from'][inputfile] + 1
         elif "eventfd2(" in line :
           #logging.debug("OPEN EVENTFD:")
           match = re.search(r'(?P<difftime>[0-9]+\.[0-9]+) eventfd2\((?P<mode>.*)\).*= (?P<fd>-?[0-9]+).*<(?P<open_time>[0-9]+\.[0-9]+)>', line)
