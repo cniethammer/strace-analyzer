@@ -206,6 +206,24 @@ def main(argv) :
           match = re.search(r'(?P<difftime>[0-9]+\.[0-9]+) execve\((.*)\).*= (?P<fd>-?[0-9]+).*<(?P<open_time>[0-9]+\.[0-9]+)>', line)
           if match :
             continue
+        elif "dup2(" in line :
+          #logging.debug("dup2:")
+          match = re.search(r'(?P<difftime>[0-9]+\.[0-9]+) dup2\((?P<fd1>[0-9]+), (?P<fd2>[0-9]+)\).*= (?P<fd>-?[0-9]+).*<(?P<open_time>[0-9]+\.[0-9]+)>', line)
+          #logging.debug("{0}".format(match.groupdict()))
+          fd1 = int(match.group('fd1'))
+          fd = int(match.group('fd'))
+          if fd == -1 :
+            continue
+          filename = open_file_tracker.get_filename(fd1)
+          open_file_tracker.register_open(filename, fd)
+          if filename not in file_access_stats :
+            file_access_stats[filename] = new_file_access_stats_entry(filename)
+          file_access_stats[filename]['open_times'].append(float(match.group('open_time')))
+          file_access_stats[filename]['open_modes'].append(file_access_stats[filename]['open_modes'][-1])
+          file_access_stats[filename]['open_fds'].append(fd)
+          if inputfile not in file_access_stats[filename]['open_from'] :
+            file_access_stats[filename]['open_from'][inputfile] = 0
+          file_access_stats[filename]['open_from'][inputfile] = file_access_stats[filename]['open_from'][inputfile] + 1
         elif "open(" in line :
           #logging.debug("OPEN:")
           match = re.search(r'(?P<difftime>[0-9]+\.[0-9]+) open\(\"(?P<filename>.*)\", (?P<mode>.*)\).*= (?P<fd>-?[0-9]+).*<(?P<open_time>[0-9]+\.[0-9]+)>', line)
