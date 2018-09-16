@@ -2,7 +2,7 @@
 #
 # Strace output I/O analyzer.
 #
-# Copyright (c) 2017     HLRS, University of Stuttgart.
+# Copyright (c) 2017-2018 HLRS, University of Stuttgart.
 # This software is published under the terms of the BSD license.
 #
 # Contact: Christoph Niethammer <niethammer@hlrs.de>
@@ -123,6 +123,266 @@ class OpenFileTracker :
   def get_open_files(self)  :
     return self.open_files
 
+
+def parseInputFiles(inputfiles):
+  open_file_tracker = OpenFileTracker()
+  file_access_stats = dict()
+  unknown_calls = dict()
+
+  open_file_tracker.register_open("stdin", 0)
+  file_access_stats["stdin"] = new_file_access_stats_entry("stdin")
+  open_file_tracker.register_open("stdout", 1)
+  file_access_stats["stdout"] = new_file_access_stats_entry("stdout")
+  open_file_tracker.register_open("stderr", 2)
+  file_access_stats["stderr"] = new_file_access_stats_entry("stderr")
+
+  num_ignored_lines = 0
+  unfinished = dict()
+
+  for inputfile in inputfiles:
+    logging.info("Processing " + str(inputfile) + " ...")
+    with open(inputfile, 'r') as f:
+      lineno = 0
+      for line in f:
+        lineno = lineno + 1
+        # logging.debug("LINE {0}: {1}".format(lineno, line.strip()))
+        if "ERESTARTSYS" in line:
+          continue
+        if "exit_group" in line:
+          break
+
+        if "<unfinished ...>" in line:
+          pid = int(line.split()[0])
+          unfinished[pid] = line[:-len(" <unfinished ...>")].rstrip()
+          continue
+        elif " resumed> " in line:
+          pid = int(line.split()[0])
+          rest = line[line.find(" resumed> ") + len(" resumed> "):].rstrip()
+          line = unfinished[pid] + rest
+          del unfinished[pid]
+        if "execve" in line:
+          # logging.debug("execve")
+          match = re.search(
+            r'(?P<difftime>[0-9]+\.[0-9]+) execve\((.*)\).*= (?P<fd>-?[0-9]+).*<(?P<open_time>[0-9]+\.[0-9]+)>', line)
+          if match:
+            continue
+        elif "dup2(" in line:
+          # logging.debug("dup2:")
+          match = re.search(
+            r'(?P<difftime>[0-9]+\.[0-9]+) dup2\((?P<fd1>[0-9]+), (?P<fd2>[0-9]+)\).*= (?P<fd>-?[0-9]+).*<(?P<open_time>[0-9]+\.[0-9]+)>',
+            line)
+          # logging.debug("{0}".format(match.groupdict()))
+          fd1 = int(match.group('fd1'))
+          fd = int(match.group('fd'))
+          if fd == -1:
+            continue
+          filename = open_file_tracker.get_filename(fd1)
+          open_file_tracker.register_open(filename, fd)
+          if filename not in file_access_stats:
+            file_access_stats[filename] = new_file_access_stats_entry(filename)
+          file_access_stats[filename]['open_times'].append(float(match.group('open_time')))
+          file_access_stats[filename]['open_modes'].append(file_access_stats[filename]['open_modes'][-1])
+          file_access_stats[filename]['open_fds'].append(fd)
+          if inputfile not in file_access_stats[filename]['open_from']:
+            file_access_stats[filename]['open_from'][inputfile] = 0
+          file_access_stats[filename]['open_from'][inputfile] = file_access_stats[filename]['open_from'][inputfile] + 1
+        elif "open(" in line:
+          # logging.debug("OPEN:")
+          match = re.search(
+            r'(?P<difftime>[0-9]+\.[0-9]+) open\(\"(?P<filename>.*)\", (?P<mode>.*)\).*= (?P<fd>-?[0-9]+).*<(?P<open_time>[0-9]+\.[0-9]+)>',
+            line)
+          # logging.debug("{0}".format(match.groupdict()))
+          fd = int(match.group('fd'))
+          if fd == -1:
+            continue
+          filename = match.group('filename')
+          open_file_tracker.register_open(filename, fd)
+          if filename not in file_access_stats:
+            file_access_stats[filename] = new_file_access_stats_entry(filename)
+          file_access_stats[filename]['open_times'].append(float(match.group('open_time')))
+          file_access_stats[filename]['open_modes'].append(match.group('mode'))
+          file_access_stats[filename]['open_fds'].append(fd)
+          if inputfile not in file_access_stats[filename]['open_from']:
+            file_access_stats[filename]['open_from'][inputfile] = 0
+          file_access_stats[filename]['open_from'][inputfile] = file_access_stats[filename]['open_from'][inputfile] + 1
+        elif "openat(" in line:
+          # logging.debug("OPEN:")
+          match = re.search(
+            r'(?P<difftime>[0-9]+\.[0-9]+) openat\((?P<dirfd>.*), \"(?P<filename>.*)\", (?P<mode>.*)\).*= (?P<fd>-?[0-9]+).*<(?P<open_time>[0-9]+\.[0-9]+)>',
+            line)
+          # logging.debug("{0}".format(match.groupdict()))
+          fd = int(match.group('fd'))
+          if fd == -1:
+            continue
+          filename = match.group('filename')
+          dirfd = match.group('dirfd')
+          if dirfd != "AT_FDCWD":
+            filename = open_file_tracker.get_filename(int(dirfd)) + "/" + filename
+          open_file_tracker.register_open(filename, fd)
+          if filename not in file_access_stats:
+            file_access_stats[filename] = new_file_access_stats_entry(filename)
+          file_access_stats[filename]['open_times'].append(float(match.group('open_time')))
+          file_access_stats[filename]['open_modes'].append(match.group('mode'))
+          file_access_stats[filename]['open_fds'].append(fd)
+          if inputfile not in file_access_stats[filename]['open_from']:
+            file_access_stats[filename]['open_from'][inputfile] = 0
+          file_access_stats[filename]['open_from'][inputfile] = file_access_stats[filename]['open_from'][inputfile] + 1
+        elif "eventfd2(" in line:
+          # logging.debug("OPEN EVENTFD:")
+          match = re.search(
+            r'(?P<difftime>[0-9]+\.[0-9]+) eventfd2\((?P<mode>.*)\).*= (?P<fd>-?[0-9]+).*<(?P<open_time>[0-9]+\.[0-9]+)>',
+            line)
+          # logging.debug("{0}".format(match.groupdict()))
+          fd = int(match.group('fd'))
+          if fd == -1:
+            continue
+          filename = '<eventfd>'
+          open_file_tracker.register_open(filename, fd)
+          if filename not in file_access_stats:
+            file_access_stats[filename] = new_file_access_stats_entry(filename)
+          file_access_stats[filename]['open_times'].append(float(match.group('open_time')))
+          file_access_stats[filename]['open_modes'].append(match.group('mode'))
+          file_access_stats[filename]['open_fds'].append(fd)
+        elif "socket(" in line:
+          # logging.debug("OPEN SOCKET:")
+          match = re.search(
+            r'(?P<difftime>[0-9]+\.[0-9]+) socket\((?P<mode>.*)\).*= (?P<fd>-?[0-9]+).*<(?P<open_time>[0-9]+\.[0-9]+)>',
+            line)
+          # logging.debug("{0}".format(match.groupdict()))
+          fd = int(match.group('fd'))
+          if fd == -1:
+            continue
+          filename = '<socket>'
+          open_file_tracker.register_open(filename, fd)
+          if filename not in file_access_stats:
+            file_access_stats[filename] = new_file_access_stats_entry(filename)
+          file_access_stats[filename]['open_times'].append(float(match.group('open_time')))
+          file_access_stats[filename]['open_modes'].append(match.group('mode'))
+          file_access_stats[filename]['open_fds'].append(fd)
+        elif "socketpair(" in line:
+          # logging.debug("OPEN SOCKET PAIR:")
+          match = re.search(
+            r'(?P<difftime>[0-9]+\.[0-9]+) socketpair\((?P<mode>.*), \[(?P<fd1>[0-9]+), (?P<fd2>[0-9]+)\]\).*= (?P<ret>-?[0-9]+).*<(?P<open_time>[0-9]+\.[0-9]+)>',
+            line)
+          # logging.debug("{0}".format(match.groupdict()))
+          fd1 = int(match.group('fd1'))
+          fd2 = int(match.group('fd2'))
+          if match.group('ret') == -1:
+            continue
+          filename = '<socket>'
+          open_file_tracker.register_open(filename, fd1)
+          open_file_tracker.register_open(filename, fd2)
+          if filename not in file_access_stats:
+            file_access_stats[filename] = new_file_access_stats_entry(filename)
+          file_access_stats[filename]['open_times'].append(float(match.group('open_time')))
+          file_access_stats[filename]['open_modes'].append(match.group('mode'))
+          file_access_stats[filename]['open_fds'].append([fd1, fd2])
+        elif "pipe(" in line:
+          # logging.debug("OPEN PIPE:")
+          match = re.search(
+            r'(?P<difftime>[0-9]+\.[0-9]+) pipe\(\[(?P<fd1>[0-9]+), (?P<fd2>[0-9]+)\]\).*= (?P<ret>-?[0-9]+).*<(?P<open_time>[0-9]+\.[0-9]+)>',
+            line)
+          # logging.debug("{0}".format(match.groupdict()))
+          fd1 = int(match.group('fd1'))
+          fd2 = int(match.group('fd2'))
+          if match.group('ret') == -1:
+            continue
+          filename = '<pipe>'
+          open_file_tracker.register_open(filename, fd1)
+          open_file_tracker.register_open(filename, fd2)
+          if filename not in file_access_stats:
+            file_access_stats[filename] = new_file_access_stats_entry(filename)
+          file_access_stats[filename]['open_times'].append(float(match.group('open_time')))
+          file_access_stats[filename]['open_fds'].append([fd1, fd2])
+        elif "close(" in line:
+          # logging.debug("CLOSE:")
+          match = re.search(
+            r'(?P<difftime>[0-9]+\.[0-9]+) close\((?P<fd>[0-9]+)\).*= (?P<ret>-?[0-9]+).*<(?P<close_time>[0-9]+\.[0-9]+)>',
+            line)
+          # logging.debug("{0}".format(match.groupdict()))
+          fd = int(match.group('fd'))
+          if not open_file_tracker.is_open(fd):
+            logging.warning("Closing unrecognized file descriptor {0}".format(fd))
+            continue
+          filename = open_file_tracker.get_filename(fd)
+          file_access_stats[filename]['close_times'].append(float(match.group('close_time')))
+          open_file_tracker.register_close(fd)
+        elif "write(" in line or "writev(" in line and not "process_vm_writev" in line:
+          # logging.debug("WRITE(V)(:")
+          match = re.search(
+            r'(?P<difftime>[0-9]+\.[0-9]+) p?writev?\((?P<fd>[0-9]+), ?.*, (?P<size>[0-9]+)\).*= (?P<write_size>-?[0-9]+).*<(?P<write_time>[0-9]+\.[0-9]+)>',
+            line)
+          # logging.debug("{0}".format(match.groupdict()))
+          fd = int(match.group('fd'))
+          if open_file_tracker.is_open(fd):
+            filename = open_file_tracker.get_filename(fd)
+            file_access_stats[filename]['write_times'].append(float(match.group('write_time')))
+            file_access_stats[filename]['write_sizes'].append(int(match.group('write_size')))
+          else:
+            logging.warning("No Open file found for file descriptor {}".format(fd))
+        elif "read(" in line or "readv(" in line and not "process_vm_readv" in line:
+          # logging.debug("READ(V):")
+          match = re.search(
+            r'(?P<difftime>[0-9]+\.[0-9]+) p?readv?\((?P<fd>[0-9]+), ?.*, (?P<size>[0-9]+)\).*= (?P<read_size>-?[0-9]+).*<(?P<read_time>[0-9]+\.[0-9]+)>',
+            line)
+          # logging.debug("{0}".format(match.groupdict()))
+          fd = int(match.group('fd'))
+          if open_file_tracker.is_open(fd):
+            filename = open_file_tracker.get_filename(fd)
+            file_access_stats[filename]['read_times'].append(float(match.group('read_time')))
+            file_access_stats[filename]['read_sizes'].append(int(match.group('read_size')))
+          else:
+            logging.warning("No Open file found for file descriptor {}".format(fd))
+        else:
+          logging.warning("Unknown line type")
+          num_ignored_lines = num_ignored_lines + 1
+          match = re.search(r'(?P<difftime>[0-9]+\.[0-9]+) (?P<func>.*?)\(.*\).*=.*<(?P<time>[0-9]+\.[0-9]+)>', line)
+          if match != None:
+            # logging.debug('{0}'.format(match.groupdict()))
+            callname = match.group('func')
+            calltime = float(match.group('time'))
+            # logging.warning("Unknown call to {0} took {1}".format(callname, calltime))
+            if callname not in unknown_calls:
+              unknown_calls[callname] = dict()
+              unknown_calls[callname]['times'] = []
+              unknown_calls[callname]['count'] = 0
+            unknown_calls[callname]['times'].append(calltime)
+            unknown_calls[callname]['count'] = unknown_calls[callname]['count'] + 1
+
+  if num_ignored_lines > 0:
+    logging.warning("Number of ignored lines: {0}".format(num_ignored_lines))
+  if open_file_tracker.is_open(0):
+    logging.warning("Ignoring open sdtin[0]")
+    open_file_tracker.register_close(0)
+  if open_file_tracker.is_open(1):
+    logging.warning("Ignoring open sdtout[1]")
+    open_file_tracker.register_close(1)
+  if open_file_tracker.is_open(2):
+    logging.warning("Ignoring open sdterr[2]")
+    open_file_tracker.register_close(2)
+  open_files = open_file_tracker.get_open_files()
+  if open_files:
+    logging.warning("There are open files at the end of file processing:")
+    for fd in open_files.keys():
+      logging.warning("  " + open_files[fd] + "[" + str(fd) + "]")
+
+  return file_access_stats, unknown_calls
+
+
+
+def calc_file_access_stats(file_access_stats):
+  for filename in file_access_stats.keys() :
+    file_access_stats[filename]['write_time'] = sum(file_access_stats[filename]['write_times'])
+    file_access_stats[filename]['write_count'] = len(file_access_stats[filename]['write_times'])
+    file_access_stats[filename]['write_size'] = sum(file_access_stats[filename]['write_sizes'])
+    file_access_stats[filename]['read_time'] = sum(file_access_stats[filename]['read_times'])
+    file_access_stats[filename]['read_count'] = len(file_access_stats[filename]['read_times'])
+    file_access_stats[filename]['read_size'] = sum(file_access_stats[filename]['read_sizes'])
+    file_access_stats[filename]['open_time'] = sum(file_access_stats[filename]['open_times'])
+    file_access_stats[filename]['open_count'] = len(file_access_stats[filename]['open_times'])
+    file_access_stats[filename]['open_from_count'] = len(file_access_stats[filename]['open_from'])
+
+
 def main(argv) :
   optparser = optparse.OptionParser("usage: %prog [options] STRACE_LOG ...", version="%prog 0.1")
   optparser.add_option('--loglevel',
@@ -167,234 +427,8 @@ def main(argv) :
     raise ValueError('Invalid log level: {0}'.format(options.loglevel))
   logging.basicConfig(format='%(levelname)s: %(message)s',level=numeric_loglevel)
 
-  inputfiles = args
-
-  open_file_tracker = OpenFileTracker()
-  file_access_stats = dict()
-  unknown_calls = dict()
-
-  open_file_tracker.register_open("stdin", 0)
-  file_access_stats["stdin"] = new_file_access_stats_entry("stdin")
-  open_file_tracker.register_open("stdout", 1)
-  file_access_stats["stdout"] = new_file_access_stats_entry("stdout")
-  open_file_tracker.register_open("stderr", 2)
-  file_access_stats["stderr"] = new_file_access_stats_entry("stderr")
-  
-  num_ignored_lines = 0
-  unfinished = dict()
-
-  for inputfile in inputfiles :
-    logging.info("Processing " + str(inputfile) + " ...")
-    with open(inputfile, 'r') as f:
-      for line in f:
-        #logging.debug("LINE {0}: {1}".format(lineno, line.strip()))
-        if "ERESTARTSYS" in line :
-          continue
-        if "<unfinished ...>" in line :
-          pid = int(line.split()[0])
-          unfinished[pid] = line[:-len(" <unfinished ...>")].rstrip()
-          continue
-        elif " resumed> " in line :
-          pid = int(line.split()[0])
-          rest = line[line.find(" resumed> ")+len(" resumed> "):].rstrip()
-          line = unfinished[pid] + rest
-          del unfinished[pid]
-        if "execve" in line :
-          #logging.debug("execve")
-          match = re.search(r'(?P<difftime>[0-9]+\.[0-9]+) execve\((.*)\).*= (?P<fd>-?[0-9]+).*<(?P<open_time>[0-9]+\.[0-9]+)>', line)
-          if match :
-            continue
-        elif "dup2(" in line :
-          #logging.debug("dup2:")
-          match = re.search(r'(?P<difftime>[0-9]+\.[0-9]+) dup2\((?P<fd1>[0-9]+), (?P<fd2>[0-9]+)\).*= (?P<fd>-?[0-9]+).*<(?P<open_time>[0-9]+\.[0-9]+)>', line)
-          #logging.debug("{0}".format(match.groupdict()))
-          fd1 = int(match.group('fd1'))
-          fd = int(match.group('fd'))
-          if fd == -1 :
-            continue
-          filename = open_file_tracker.get_filename(fd1)
-          open_file_tracker.register_open(filename, fd)
-          if filename not in file_access_stats :
-            file_access_stats[filename] = new_file_access_stats_entry(filename)
-          file_access_stats[filename]['open_times'].append(float(match.group('open_time')))
-          file_access_stats[filename]['open_modes'].append(file_access_stats[filename]['open_modes'][-1])
-          file_access_stats[filename]['open_fds'].append(fd)
-          if inputfile not in file_access_stats[filename]['open_from'] :
-            file_access_stats[filename]['open_from'][inputfile] = 0
-          file_access_stats[filename]['open_from'][inputfile] = file_access_stats[filename]['open_from'][inputfile] + 1
-        elif "open(" in line :
-          #logging.debug("OPEN:")
-          match = re.search(r'(?P<difftime>[0-9]+\.[0-9]+) open\(\"(?P<filename>.*)\", (?P<mode>.*)\).*= (?P<fd>-?[0-9]+).*<(?P<open_time>[0-9]+\.[0-9]+)>', line)
-          #logging.debug("{0}".format(match.groupdict()))
-          fd = int(match.group('fd'))
-          if fd == -1 :
-            continue
-          filename = match.group('filename')
-          open_file_tracker.register_open(filename, fd)
-          if filename not in file_access_stats :
-            file_access_stats[filename] = new_file_access_stats_entry(filename)
-          file_access_stats[filename]['open_times'].append(float(match.group('open_time')))
-          file_access_stats[filename]['open_modes'].append(match.group('mode'))
-          file_access_stats[filename]['open_fds'].append(fd)
-          if inputfile not in file_access_stats[filename]['open_from'] :
-            file_access_stats[filename]['open_from'][inputfile] = 0
-          file_access_stats[filename]['open_from'][inputfile] = file_access_stats[filename]['open_from'][inputfile] + 1
-        elif "openat(" in line :
-          #logging.debug("OPEN:")
-          match = re.search(r'(?P<difftime>[0-9]+\.[0-9]+) openat\((?P<dirfd>.*), \"(?P<filename>.*)\", (?P<mode>.*)\).*= (?P<fd>-?[0-9]+).*<(?P<open_time>[0-9]+\.[0-9]+)>', line)
-          #logging.debug("{0}".format(match.groupdict()))
-          fd = int(match.group('fd'))
-          if fd == -1 :
-            continue
-          filename = match.group('filename')
-          dirfd = match.group('dirfd')
-          if dirfd != "AT_FDCWD":
-            filename = open_file_tracker.get_filename(int(dirfd)) + "/" + filename
-          open_file_tracker.register_open(filename, fd)
-          if filename not in file_access_stats :
-            file_access_stats[filename] = new_file_access_stats_entry(filename)
-          file_access_stats[filename]['open_times'].append(float(match.group('open_time')))
-          file_access_stats[filename]['open_modes'].append(match.group('mode'))
-          file_access_stats[filename]['open_fds'].append(fd)
-          if inputfile not in file_access_stats[filename]['open_from'] :
-            file_access_stats[filename]['open_from'][inputfile] = 0
-          file_access_stats[filename]['open_from'][inputfile] = file_access_stats[filename]['open_from'][inputfile] + 1
-        elif "eventfd2(" in line :
-          #logging.debug("OPEN EVENTFD:")
-          match = re.search(r'(?P<difftime>[0-9]+\.[0-9]+) eventfd2\((?P<mode>.*)\).*= (?P<fd>-?[0-9]+).*<(?P<open_time>[0-9]+\.[0-9]+)>', line)
-          #logging.debug("{0}".format(match.groupdict()))
-          fd = int(match.group('fd'))
-          if fd == -1 :
-            continue
-          filename = '<eventfd>'
-          open_file_tracker.register_open(filename, fd)
-          if filename not in file_access_stats :
-            file_access_stats[filename] = new_file_access_stats_entry(filename)
-          file_access_stats[filename]['open_times'].append(float(match.group('open_time')))
-          file_access_stats[filename]['open_modes'].append(match.group('mode'))
-          file_access_stats[filename]['open_fds'].append(fd)
-        elif "socket(" in line :
-          #logging.debug("OPEN SOCKET:")
-          match = re.search(r'(?P<difftime>[0-9]+\.[0-9]+) socket\((?P<mode>.*)\).*= (?P<fd>-?[0-9]+).*<(?P<open_time>[0-9]+\.[0-9]+)>', line)
-          #logging.debug("{0}".format(match.groupdict()))
-          fd = int(match.group('fd'))
-          if fd == -1 :
-            continue
-          filename = '<socket>'
-          open_file_tracker.register_open(filename, fd)
-          if filename not in file_access_stats :
-            file_access_stats[filename] = new_file_access_stats_entry(filename)
-          file_access_stats[filename]['open_times'].append(float(match.group('open_time')))
-          file_access_stats[filename]['open_modes'].append(match.group('mode'))
-          file_access_stats[filename]['open_fds'].append(fd)
-        elif "socketpair(" in line :
-          #logging.debug("OPEN SOCKET PAIR:")
-          match = re.search(r'(?P<difftime>[0-9]+\.[0-9]+) socketpair\((?P<mode>.*), \[(?P<fd1>[0-9]+), (?P<fd2>[0-9]+)\]\).*= (?P<ret>-?[0-9]+).*<(?P<open_time>[0-9]+\.[0-9]+)>', line)
-          #logging.debug("{0}".format(match.groupdict()))
-          fd1 = int(match.group('fd1'))
-          fd2 = int(match.group('fd2'))
-          if match.group('ret') == -1 :
-            continue
-          filename = '<socket>'
-          open_file_tracker.register_open(filename, fd1)
-          open_file_tracker.register_open(filename, fd2)
-          if filename not in file_access_stats :
-            file_access_stats[filename] = new_file_access_stats_entry(filename)
-          file_access_stats[filename]['open_times'].append(float(match.group('open_time')))
-          file_access_stats[filename]['open_modes'].append(match.group('mode'))
-          file_access_stats[filename]['open_fds'].append([fd1, fd2])
-        elif "pipe(" in line :
-          #logging.debug("OPEN PIPE:")
-          match = re.search(r'(?P<difftime>[0-9]+\.[0-9]+) pipe\(\[(?P<fd1>[0-9]+), (?P<fd2>[0-9]+)\]\).*= (?P<ret>-?[0-9]+).*<(?P<open_time>[0-9]+\.[0-9]+)>', line)
-          #logging.debug("{0}".format(match.groupdict()))
-          fd1 = int(match.group('fd1'))
-          fd2 = int(match.group('fd2'))
-          if match.group('ret') == -1 :
-            continue
-          filename = '<pipe>'
-          open_file_tracker.register_open(filename, fd1)
-          open_file_tracker.register_open(filename, fd2)
-          if filename not in file_access_stats :
-            file_access_stats[filename] = new_file_access_stats_entry(filename)
-          file_access_stats[filename]['open_times'].append(float(match.group('open_time')))
-          file_access_stats[filename]['open_fds'].append([fd1, fd2])
-        elif "close(" in line :
-          #logging.debug("CLOSE:")
-          match = re.search(r'(?P<difftime>[0-9]+\.[0-9]+) close\((?P<fd>[0-9]+)\).*= (?P<ret>-?[0-9]+).*<(?P<close_time>[0-9]+\.[0-9]+)>', line)
-          #logging.debug("{0}".format(match.groupdict()))
-          fd = int(match.group('fd'))
-          if not open_file_tracker.is_open(fd) :
-            logging.warning("Closing unrecognized file descriptor {0}".format(fd))
-            continue
-          filename = open_file_tracker.get_filename(fd)
-          file_access_stats[filename]['close_times'].append(float(match.group('close_time')))
-          open_file_tracker.register_close(fd)
-        elif "write(" in line or "writev(" in line and not "process_vm_writev" in line:
-          #logging.debug("WRITE(V)(:")
-          match = re.search(r'(?P<difftime>[0-9]+\.[0-9]+) p?writev?\((?P<fd>[0-9]+), ?.*, (?P<size>[0-9]+)\).*= (?P<write_size>-?[0-9]+).*<(?P<write_time>[0-9]+\.[0-9]+)>', line)
-          #logging.debug("{0}".format(match.groupdict()))
-          fd = int(match.group('fd'))
-          if open_file_tracker.is_open(fd) :
-            filename = open_file_tracker.get_filename(fd)
-            file_access_stats[filename]['write_times'].append(float(match.group('write_time')))
-            file_access_stats[filename]['write_sizes'].append(int(match.group('write_size')))
-          else :
-            logging.warning("No Open file found for file descriptor {}".format(fd))
-        elif "read(" in line or "readv(" in line and not "process_vm_readv" in line:
-          #logging.debug("READ(V):")
-          match = re.search(r'(?P<difftime>[0-9]+\.[0-9]+) p?readv?\((?P<fd>[0-9]+), ?.*, (?P<size>[0-9]+)\).*= (?P<read_size>-?[0-9]+).*<(?P<read_time>[0-9]+\.[0-9]+)>', line)
-          #logging.debug("{0}".format(match.groupdict()))
-          fd = int(match.group('fd'))
-          if open_file_tracker.is_open(fd) :
-            filename = open_file_tracker.get_filename(fd)
-            file_access_stats[filename]['read_times'].append(float(match.group('read_time')))
-            file_access_stats[filename]['read_sizes'].append(int(match.group('read_size')))
-          else :
-            logging.warning("No Open file found for file descriptor {}".format(fd))
-        else :
-          logging.warning("Unknown line type")
-          num_ignored_lines = num_ignored_lines + 1
-          match = re.search(r'(?P<difftime>[0-9]+\.[0-9]+) (?P<func>.*?)\(.*\).*=.*<(?P<time>[0-9]+\.[0-9]+)>', line)
-          if match != None :
-            #logging.debug('{0}'.format(match.groupdict()))
-            callname = match.group('func')
-            calltime = float(match.group('time'))
-            #logging.warning("Unknown call to {0} took {1}".format(callname, calltime))
-            if callname not in unknown_calls :
-              unknown_calls[callname] = dict()
-              unknown_calls[callname]['times'] = []
-              unknown_calls[callname]['count'] = 0
-            unknown_calls[callname]['times'].append(calltime)
-            unknown_calls[callname]['count'] = unknown_calls[callname]['count'] + 1
-
-  if num_ignored_lines > 0 :
-    logging.warning("Number of ignored lines: {0}".format(num_ignored_lines))
-  if open_file_tracker.is_open(0) :
-    logging.warning("Ignoring open sdtin[0]")
-    open_file_tracker.register_close(0)
-  if open_file_tracker.is_open(1) :
-    logging.warning("Ignoring open sdtout[1]")
-    open_file_tracker.register_close(1)
-  if open_file_tracker.is_open(2) :
-    logging.warning("Ignoring open sdterr[2]")
-    open_file_tracker.register_close(2)
-  open_files = open_file_tracker.get_open_files()
-  if open_files :
-    logging.warning("There are open files at the end of file processing:")
-    for fd in open_files.keys() :
-      logging.warning("  " + open_files[fd] + "[" + str(fd) + "]")
-
-
-  for filename in file_access_stats.keys() :
-    file_access_stats[filename]['write_time'] = sum(file_access_stats[filename]['write_times'])
-    file_access_stats[filename]['write_count'] = len(file_access_stats[filename]['write_times'])
-    file_access_stats[filename]['write_size'] = sum(file_access_stats[filename]['write_sizes'])
-    file_access_stats[filename]['read_time'] = sum(file_access_stats[filename]['read_times'])
-    file_access_stats[filename]['read_count'] = len(file_access_stats[filename]['read_times'])
-    file_access_stats[filename]['read_size'] = sum(file_access_stats[filename]['read_sizes'])
-    file_access_stats[filename]['open_time'] = sum(file_access_stats[filename]['open_times'])
-    file_access_stats[filename]['open_count'] = len(file_access_stats[filename]['open_times'])
-    file_access_stats[filename]['open_from_count'] = len(file_access_stats[filename]['open_from'])
+  file_access_stats, _ = parseInputFiles(args)
+  calc_file_access_stats(file_access_stats)
 
   properties = ['write_time', 'write_count', 'write_size', 'read_time', 'read_count', 'read_size', 'open_time', 'open_count', 'open_from_count']
   formatstr = '{0}{1}{2}'.format('{',':>8} {'.join(map(str,list(range(len(properties))))),':>8}')
@@ -407,7 +441,7 @@ def main(argv) :
 
   print_output_section_title("I/O STATISTICS (sorted by {0})".format(options.sort_by))
   print(formatstr.format(*properties))
-  for filedata in sorted_filenames :
+  for filedata in sorted_filenames:
     filename = filedata['filename']
     if re.match(options.filter_files, filename) :
       print_file_statistics(file_access_stats[filename], formatstr, properties)

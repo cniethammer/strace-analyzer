@@ -31,11 +31,11 @@ which will generate a set of strace log files - one for each MPI process.
 To analyze the created traces run
 
 ```
-./strace-io-stats.py *.strace
+./strace_io_stats.py *.strace
 ```
-To get help how to use and control strace-io-stats.py run
+To get help how to use and control strace_io_stats.py run
 ```
-./strace-io-stats.py --help
+./strace_io_stats.py --help
 ```
 
 
