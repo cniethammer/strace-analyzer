@@ -185,10 +185,8 @@ def main(argv) :
 
   for inputfile in inputfiles :
     logging.info("Processing " + str(inputfile) + " ...")
-    with open(inputfile, 'r') as f :
-      lineno=0
-      for line in f :
-        lineno = lineno + 1
+    with open(inputfile, 'r') as f:
+      for line in f:
         #logging.debug("LINE {0}: {1}".format(lineno, line.strip()))
         if "ERESTARTSYS" in line :
           continue
@@ -420,7 +418,6 @@ def main(argv) :
   if options.unknown_call_stats :
     print_output_section_title("HIDDEN STATISTICS (sorted by time)")
     unknown_call_times = dict()
-    unknown_call_counts = dict()
     for callname in unknown_calls.keys() :
       unknown_call_times[callname] = sum(unknown_calls[callname]['times'])
     print("{0:16} {1:>12} {2:>12}".format("callname", "count", "time"))
