@@ -15,4 +15,11 @@ if ! test -d $LOGDIR ; then
   mkdir -p $LOGDIR
 fi
 LOGFILE="$LOGDIR/${MPI_RANK:+r${MPI_RANK}-}$(hostname).$$.strace"
-strace -f -r -T -o "$LOGFILE" "$@"
+
+
+if  ! test -z $MPI_RANK  &&  ! test -z $RANK_FILTER  &&  ! [[ $MPI_RANK =~ $RANK_FILTER ]] ; then
+  echo "# Rank $MPI_RANK not traced" > $LOGFILE
+  "$@"
+else
+  strace -f -r -T -o "$LOGFILE" "$@"
+fi

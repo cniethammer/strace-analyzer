@@ -31,6 +31,14 @@ The LOGDIR variable may be used to specify another directory for the log files:
 ```
   LOGDIR=my_log_dir mpirun [MPI OPTIONS] ./strace-wrapper.sh ./my_app [APP OPTIONS]
 ```
+#### Filtering MPI ranks
+For MPI programs running with large number of processes the number of traced
+processes may have to be narrowed down. The RANK_FILTER variable allows to
+specify a regex pattern which is matched agains the MPI rank number. Only
+processes with ranks matching this regex will be traced.
+```
+  RANK_FILTER='[0-4]' mpirun [MPI OPTIONS] ./strace-wrapper.sh ./my_app [APP OPTIONS]
+```
 
 
 #### Analyzing Traces
