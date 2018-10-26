@@ -25,6 +25,13 @@ or use the strace-wrapper.sh for MPI parallel programs like
   mpirun [MPI OPTIONS] ./strace-wrapper.sh ./my_app [APP OPTIONS]
 ```
 which will generate a set of strace log files - one for each MPI process.
+The log files will be stored in a directory strace-logs under the current path.
+If the directory does not exist, it will be created.
+The LOGDIR variable may be used to specify another directory for the log files:
+```
+  LOGDIR=my_log_dir mpirun [MPI OPTIONS] ./strace-wrapper.sh ./my_app [APP OPTIONS]
+```
+
 
 #### Analyzing Traces
 

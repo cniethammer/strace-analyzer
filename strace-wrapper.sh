@@ -10,5 +10,9 @@ MPI_RANK=${MPI_RANK:=$PMIX_RANK}
 MPI_RANK=${MPI_RANK:=$OMPI_COMM_WORLD_RANK}
 MPI_RANK=${MPI_RANK:=$ALPS_APP_PE}
 
-LOGFILE="${MPI_RANK:+r${MPI_RANK}-}$(hostname).$$.strace"
+LOGDIR=${LOGDIR:=strace-logs}
+if ! test -d $LOGDIR ; then
+  mkdir -p $LOGDIR
+fi
+LOGFILE="$LOGDIR/${MPI_RANK:+r${MPI_RANK}-}$(hostname).$$.strace"
 strace -f -r -T -o "$LOGFILE" "$@"
