@@ -26,7 +26,6 @@ try:
 except ImportError as e:
     print("python 3.4 or greater required, found %s" % sys.version)
     raise ImportError(e)
-    sys.exit(1)
 
 
 def print_output_section_title(title) :
