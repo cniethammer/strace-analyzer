@@ -426,7 +426,7 @@ def main(argv) :
     raise ValueError('Invalid log level: {0}'.format(options.loglevel))
   logging.basicConfig(format='%(levelname)s: %(message)s',level=numeric_loglevel)
 
-  file_access_stats, _ = parseInputFiles(args)
+  file_access_stats, unknown_calls = parseInputFiles(args)
   calc_file_access_stats(file_access_stats)
 
   properties = ['write_time', 'write_count', 'write_size', 'read_time', 'read_count', 'read_size', 'open_time', 'open_count', 'open_from_count']
