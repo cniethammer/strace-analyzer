@@ -379,6 +379,7 @@ def calc_file_access_stats(file_access_stats):
     file_access_stats[filename]['read_size'] = sum(file_access_stats[filename]['read_sizes'])
     file_access_stats[filename]['open_time'] = sum(file_access_stats[filename]['open_times'])
     file_access_stats[filename]['open_count'] = len(file_access_stats[filename]['open_times'])
+    file_access_stats[filename]['close_count'] = len(file_access_stats[filename]['close_times'])
     file_access_stats[filename]['open_from_count'] = len(file_access_stats[filename]['open_from'])
 
 
@@ -429,7 +430,7 @@ def main(argv) :
   file_access_stats, unknown_calls = parseInputFiles(args)
   calc_file_access_stats(file_access_stats)
 
-  properties = ['write_time', 'write_count', 'write_size', 'read_time', 'read_count', 'read_size', 'open_time', 'open_count', 'open_from_count']
+  properties = ['write_time', 'write_count', 'write_size', 'read_time', 'read_count', 'read_size', 'open_time', 'open_count', 'open_from_count', 'close_count']
   formatstr = '{0}{1}{2}'.format('{',':>8} {'.join(map(str,list(range(len(properties))))),':>8}')
   formatstr = formatstr + " {{{0}}}".format(len(properties))
   properties.append('filename')
