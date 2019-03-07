@@ -105,6 +105,8 @@ def new_file_access_stats_entry(filename) :
   data['open_time'] = 0.0
   data['open_count'] = 0
   data['open_from_count'] = 0
+  data['close_time'] = 0.0
+  data['close_count'] = 0
   return data
 
 
@@ -379,6 +381,8 @@ def calc_file_access_stats(file_access_stats):
     file_access_stats[filename]['read_size'] = sum(file_access_stats[filename]['read_sizes'])
     file_access_stats[filename]['open_time'] = sum(file_access_stats[filename]['open_times'])
     file_access_stats[filename]['open_count'] = len(file_access_stats[filename]['open_times'])
+    file_access_stats[filename]['close_time'] = sum(file_access_stats[filename]['close_times'])
+    file_access_stats[filename]['close_count'] = len(file_access_stats[filename]['close_times'])
     file_access_stats[filename]['open_from_count'] = len(file_access_stats[filename]['open_from'])
 
 
@@ -406,7 +410,7 @@ def main(argv) :
                   dest="file_details",
                   default=False
                   )
-  all_properties = ['write_time', 'write_count', 'write_size', 'read_time', 'read_count', 'read_size', 'open_time', 'open_count', 'open_from_count']
+  all_properties = ['write_time', 'write_count', 'write_size', 'read_time', 'read_count', 'read_size', 'open_time', 'open_count', 'open_from_count', 'close_time', 'close_count']
   optparser.add_option('--format',
                   help="Comma separated list of fields to include in the output. Supported fields are {} and 'all'. (Default: %default)".format(", ".join(all_properties)),
                   dest="format",
