@@ -406,6 +406,12 @@ def main(argv) :
                   dest="file_details",
                   default=False
                   )
+  all_properties = ['write_time', 'write_count', 'write_size', 'read_time', 'read_count', 'read_size', 'open_time', 'open_count', 'open_from_count']
+  optparser.add_option('--format',
+                  help="Comma separated list of fields to include in the output. Supported fields are {} and 'all'. (Default: %default)".format(", ".join(all_properties)),
+                  dest="format",
+                  default="write_time,write_count,write_size,read_time,read_count,read_size,open_time,open_count,open_from_count"
+                  )
   optparser.add_option('--unknown-call-stats',
                   help="print statistics about untracked calls",
                   action="store_true",
@@ -413,7 +419,7 @@ def main(argv) :
                   default=False
                   )
   optparser.add_option('--sort-by',
-                  help="Sort results by property, default: write_time",
+                  help="Sort results by property, defaults to first column specified in format",
                   action="store",
                   type="string",
                   metavar="STRING",
@@ -429,16 +435,21 @@ def main(argv) :
   file_access_stats, unknown_calls = parseInputFiles(args)
   calc_file_access_stats(file_access_stats)
 
-  properties = ['write_time', 'write_count', 'write_size', 'read_time', 'read_count', 'read_size', 'open_time', 'open_count', 'open_from_count']
+  properties = options.format.split(',')
+  if 'all' in properties:
+    properties = all_properties
   formatstr = '{0}{1}{2}'.format('{',':>8} {'.join(map(str,list(range(len(properties))))),':>8}')
   formatstr = formatstr + " {{{0}}}".format(len(properties))
   properties.append('filename')
 
-  if options.sort_by not in properties :
-    logging.error("Unknown sort-by value '{0}'. Falling back to 'write_time'".format(options.sort_by))
-  sorted_filenames = sorted(file_access_stats.values(), reverse=True, key=lambda k : k[options.sort_by])
+  sort_by = properties[0]
+  if options.sort_by not in all_properties :
+    logging.error("Unknown sort-by value '{0}'. Falling back to '{1}'".format(options.sort_by, sort_by))
+  else:
+    sort_by = options.sort_by
+  sorted_filenames = sorted(file_access_stats.values(), reverse=True, key=lambda k : k[sort_by])
 
-  print_output_section_title("I/O STATISTICS (sorted by {0})".format(options.sort_by))
+  print_output_section_title("I/O STATISTICS (sorted by {0})".format(sort_by))
   print(formatstr.format(*properties))
   for filedata in sorted_filenames:
     filename = filedata['filename']
