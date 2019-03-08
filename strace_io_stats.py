@@ -2,7 +2,7 @@
 #
 # Strace output I/O analyzer.
 #
-# Copyright (c) 2017-2018 HLRS, University of Stuttgart.
+# Copyright (c) 2017-2019 HLRS, University of Stuttgart.
 # This software is published under the terms of the BSD license.
 #
 # Contact: Christoph Niethammer <niethammer@hlrs.de>
