@@ -2,7 +2,7 @@
 #
 # Strace output I/O analyzer.
 #
-# Copyright (c) 2017-2018 HLRS, University of Stuttgart.
+# Copyright (c) 2017-2019 HLRS, University of Stuttgart.
 # This software is published under the terms of the BSD license.
 #
 # Contact: Christoph Niethammer <niethammer@hlrs.de>
@@ -142,10 +142,8 @@ def parseInputFiles(inputfiles):
 
   for inputfile in inputfiles:
     logging.info("Processing " + str(inputfile) + " ...")
-    with open(inputfile, 'r') as f:
-      lineno = 0
-      for line in f:
-        lineno = lineno + 1
+    with open(inputfile, 'r') as fh:
+      for lineno, line in enumerate(fh):
         # logging.debug("LINE {0}: {1}".format(lineno, line.strip()))
         if "ERESTARTSYS" in line:
           continue
@@ -335,7 +333,7 @@ def parseInputFiles(inputfiles):
           else:
             logging.warning("No Open file found for file descriptor {}".format(fd))
         else:
-          logging.warning("Unknown line type")
+          logging.debug("Unknown line type: '{}'".format(line.strip()))
           num_ignored_lines = num_ignored_lines + 1
           match = re.search(r'(?P<difftime>[0-9]+\.[0-9]+) (?P<func>.*?)\(.*\).*=.*<(?P<time>[0-9]+\.[0-9]+)>', line)
           if match != None:
@@ -386,7 +384,7 @@ def calc_file_access_stats(file_access_stats):
     file_access_stats[filename]['open_from_count'] = len(file_access_stats[filename]['open_from'])
 
 
-def main(argv) :
+def main() :
   optparser = optparse.OptionParser("usage: %prog [options] STRACE_LOG ...", version="%prog 0.1")
   optparser.add_option('--loglevel',
                   help="enable verbose output. Supported leveles: CRITICAL, ERROR, WARNING, INFO, DEBUG",
@@ -473,5 +471,5 @@ def main(argv) :
       print("{0:16} {1:>12} {2:>12.9}".format(callname, unknown_calls[callname]['count'], time))
     print_output_section_footer("HIDDEN STATISTICS")
 
-if "__main__" == __name__ :
-  main(sys.argv)
+if __name__ == "__main__":
+  main()
