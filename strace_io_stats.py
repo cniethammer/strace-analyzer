@@ -142,10 +142,8 @@ def parseInputFiles(inputfiles):
 
   for inputfile in inputfiles:
     logging.info("Processing " + str(inputfile) + " ...")
-    with open(inputfile, 'r') as f:
-      lineno = 0
-      for line in f:
-        lineno = lineno + 1
+    with open(inputfile, 'r') as fh:
+      for lineno, line in enumerate(fh):
         # logging.debug("LINE {0}: {1}".format(lineno, line.strip()))
         if "ERESTARTSYS" in line:
           continue
@@ -386,7 +384,7 @@ def calc_file_access_stats(file_access_stats):
     file_access_stats[filename]['open_from_count'] = len(file_access_stats[filename]['open_from'])
 
 
-def main(argv) :
+def main() :
   optparser = optparse.OptionParser("usage: %prog [options] STRACE_LOG ...", version="%prog 0.1")
   optparser.add_option('--loglevel',
                   help="enable verbose output. Supported leveles: CRITICAL, ERROR, WARNING, INFO, DEBUG",
@@ -473,5 +471,5 @@ def main(argv) :
       print("{0:16} {1:>12} {2:>12.9}".format(callname, unknown_calls[callname]['count'], time))
     print_output_section_footer("HIDDEN STATISTICS")
 
-if "__main__" == __name__ :
-  main(sys.argv)
+if __name__ == "__main__":
+  main()
