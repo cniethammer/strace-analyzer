@@ -333,7 +333,7 @@ def parseInputFiles(inputfiles):
           else:
             logging.warning("No Open file found for file descriptor {}".format(fd))
         else:
-          logging.warning("Unknown line type")
+          logging.debug("Unknown line type: '{}'".format(line.strip()))
           num_ignored_lines = num_ignored_lines + 1
           match = re.search(r'(?P<difftime>[0-9]+\.[0-9]+) (?P<func>.*?)\(.*\).*=.*<(?P<time>[0-9]+\.[0-9]+)>', line)
           if match != None:
