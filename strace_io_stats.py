@@ -2,7 +2,7 @@
 #
 # Strace output I/O analyzer.
 #
-# Copyright (c) 2017-2018 HLRS, University of Stuttgart.
+# Copyright (c) 2017-2019 HLRS, University of Stuttgart.
 # This software is published under the terms of the BSD license.
 #
 # Contact: Christoph Niethammer <niethammer@hlrs.de>
@@ -19,50 +19,50 @@
 import sys
 
 try:
-    import optparse
-    import re
-    import logging
-    import statistics
+  import optparse
+  import re
+  import logging
+  import statistics
 except ImportError as e:
-    print("python 3.4 or greater required, found %s" % sys.version)
-    raise ImportError(e)
+  print("python 3.4 or greater required, found %s" % sys.version)
+  raise ImportError(e)
 
 
-def print_output_section_title(title) :
+def print_output_section_title(title):
   print('-'*78 + "\n" + title + ":\n" + '-'*78)
 
-def print_output_section_footer(title) :
+def print_output_section_footer(title):
   print('-'*78 + "\n")
 
-def print_file_statistics(filedata, formatstr, properties) :
+def print_file_statistics(filedata, formatstr, properties):
   values = [filedata[p] for p in properties]
   print(formatstr.format(*values))
 
 
-def write_io_details(data, filename) :
+def write_io_details(data, filename):
   """!@brief Write io statistics to file
-  @param data      Dict containing pairs of the form {size : time}
+  @param data      Dict containing pairs of the form {size: time}
   @param filename  Name of output file
   """
   stats = dict()
-  for size, time in data :
-    if size not in stats :
+  for size, time in data:
+    if size not in stats:
       stats[size] = []
     stats[size].append(time)
-  with open(filename, "w+") as f :
+  with open(filename, "w+") as f:
     f.write(",".join(["size", "count", "time_tot", "time_min", "time_max", "time_median", "bw_avg", "bw_min", "bw_max"]) + "\n")
-    for size in sorted(stats.keys()) :
+    for size in sorted(stats.keys()):
       count = len(stats[size])
       t_tot = sum(stats[size])
       t_min = min(stats[size])
       t_max = max(stats[size])
       t_median = statistics.median_high(stats[size])
-      f.write(",".join(map(str, [size, count, t_tot, t_min, t_max, t_median, size * count / t_tot, size / t_max, size / t_min ])) + "\n")
+      f.write(",".join(map(str, [size, count, t_tot, t_min, t_max, t_median, size * count / t_tot, size / t_max, size / t_min])) + "\n")
 
-def write_open_details(filedata, filename) :
-  with open(filename, "w+") as f :
+def write_open_details(filedata, filename):
+  with open(filename, "w+") as f:
     f.write(",".join(["opened_from", "count"]) + "\n")
-    for open_from, count in filedata['open_from'].items() :
+    for open_from, count in filedata['open_from'].items():
       f.write(",".join(map(str, [open_from, count])) + "\n")
 
 def save_file_details(filedata):
@@ -71,19 +71,19 @@ def save_file_details(filedata):
   """
   filename = filedata['filename']
   # stats for writes
-  writestat_file = filename.replace("/","__") + ".write.stat.txt"
+  writestat_file = filename.replace("/", "__") + ".write.stat.txt"
   writestat_data = zip(filedata['write_sizes'], filedata['write_times'])
   write_io_details(writestat_data, writestat_file)
   # stats for reads
-  readstat_file = filename.replace("/","__") + ".read.stat.txt"
+  readstat_file = filename.replace("/", "__") + ".read.stat.txt"
   readstat_data = zip(filedata['read_sizes'], filedata['read_times'])
   write_io_details(readstat_data, readstat_file)
   # stats for opens
-  openstat_file = filename.replace("/","__") + ".open.stat.txt"
+  openstat_file = filename.replace("/", "__") + ".open.stat.txt"
   write_open_details(filedata, openstat_file)
 
 
-def new_file_access_stats_entry(filename) :
+def new_file_access_stats_entry(filename):
   data = dict()
   data['filename'] = filename
   data['open_times'] = []
@@ -110,18 +110,18 @@ def new_file_access_stats_entry(filename) :
   return data
 
 
-class OpenFileTracker :
-  def __init__(self) :
+class OpenFileTracker:
+  def __init__(self):
     self.open_files = dict()
-  def register_open(self, filename, fd) :
+  def register_open(self, filename, fd):
     self.open_files[fd] = filename
-  def register_close(self, fd) :
+  def register_close(self, fd):
     del self.open_files[fd]
-  def is_open(self, fd) :
+  def is_open(self, fd):
     return fd in self.open_files
-  def get_filename(self, fd) :
+  def get_filename(self, fd):
     return self.open_files[fd]
-  def get_open_files(self)  :
+  def get_open_files(self):
     return self.open_files
 
 
@@ -142,10 +142,8 @@ def parseInputFiles(inputfiles):
 
   for inputfile in inputfiles:
     logging.info("Processing " + str(inputfile) + " ...")
-    with open(inputfile, 'r') as f:
-      lineno = 0
-      for line in f:
-        lineno = lineno + 1
+    with open(inputfile, 'r') as fh:
+      for lineno, line in enumerate(fh):
         # logging.debug("LINE {0}: {1}".format(lineno, line.strip()))
         if "ERESTARTSYS" in line:
           continue
@@ -335,7 +333,7 @@ def parseInputFiles(inputfiles):
           else:
             logging.warning("No Open file found for file descriptor {}".format(fd))
         else:
-          logging.warning("Unknown line type")
+          logging.debug("Unknown line type: '{}'".format(line.strip()))
           num_ignored_lines = num_ignored_lines + 1
           match = re.search(r'(?P<difftime>[0-9]+\.[0-9]+) (?P<func>.*?)\(.*\).*=.*<(?P<time>[0-9]+\.[0-9]+)>', line)
           if match != None:
@@ -372,7 +370,7 @@ def parseInputFiles(inputfiles):
 
 
 def calc_file_access_stats(file_access_stats):
-  for filename in file_access_stats.keys() :
+  for filename in file_access_stats.keys():
     file_access_stats[filename]['write_time'] = sum(file_access_stats[filename]['write_times'])
     file_access_stats[filename]['write_count'] = len(file_access_stats[filename]['write_times'])
     file_access_stats[filename]['write_size'] = sum(file_access_stats[filename]['write_sizes'])
@@ -386,7 +384,7 @@ def calc_file_access_stats(file_access_stats):
     file_access_stats[filename]['open_from_count'] = len(file_access_stats[filename]['open_from'])
 
 
-def main(argv) :
+def main():
   optparser = optparse.OptionParser("usage: %prog [options] STRACE_LOG ...", version="%prog 0.1")
   optparser.add_option('--loglevel',
                   help="enable verbose output. Supported leveles: CRITICAL, ERROR, WARNING, INFO, DEBUG",
@@ -434,7 +432,7 @@ def main(argv) :
   numeric_loglevel = getattr(logging, options.loglevel.upper(), None)
   if not isinstance(numeric_loglevel, int):
     raise ValueError('Invalid log level: {0}'.format(options.loglevel))
-  logging.basicConfig(format='%(levelname)s: %(message)s',level=numeric_loglevel)
+  logging.basicConfig(format='%(levelname)s: %(message)s', level=numeric_loglevel)
 
   file_access_stats, unknown_calls = parseInputFiles(args)
   calc_file_access_stats(file_access_stats)
@@ -442,36 +440,36 @@ def main(argv) :
   properties = options.format.split(',')
   if 'all' in properties:
     properties = all_properties
-  formatstr = '{0}{1}{2}'.format('{',':>8} {'.join(map(str,list(range(len(properties))))),':>8}')
+  formatstr = '{0}{1}{2}'.format('{', ':>8} {'.join(map(str, list(range(len(properties))))), ':>8}')
   formatstr = formatstr + " {{{0}}}".format(len(properties))
   properties.append('filename')
 
   sort_by = properties[0]
-  if options.sort_by not in all_properties :
+  if options.sort_by not in all_properties:
     logging.error("Unknown sort-by value '{0}'. Falling back to '{1}'".format(options.sort_by, sort_by))
   else:
     sort_by = options.sort_by
-  sorted_filenames = sorted(file_access_stats.values(), reverse=True, key=lambda k : k[sort_by])
+  sorted_filenames = sorted(file_access_stats.values(), reverse=True, key=lambda k: k[sort_by])
 
   print_output_section_title("I/O STATISTICS (sorted by {0})".format(sort_by))
   print(formatstr.format(*properties))
   for filedata in sorted_filenames:
     filename = filedata['filename']
-    if re.match(options.filter_files, filename) :
+    if re.match(options.filter_files, filename):
       print_file_statistics(file_access_stats[filename], formatstr, properties)
-      if options.file_details :
+      if options.file_details:
         save_file_details(file_access_stats[filename])
   print_output_section_footer("I/O STATISTICS")
 
-  if options.unknown_call_stats :
+  if options.unknown_call_stats:
     print_output_section_title("HIDDEN STATISTICS (sorted by time)")
     unknown_call_times = dict()
-    for callname in unknown_calls.keys() :
+    for callname in unknown_calls.keys():
       unknown_call_times[callname] = sum(unknown_calls[callname]['times'])
     print("{0:16} {1:>12} {2:>12}".format("callname", "count", "time"))
-    for callname, time in sorted(unknown_call_times.items()) :
+    for callname, time in sorted(unknown_call_times.items()):
       print("{0:16} {1:>12} {2:>12.9}".format(callname, unknown_calls[callname]['count'], time))
     print_output_section_footer("HIDDEN STATISTICS")
 
-if "__main__" == __name__ :
-  main(sys.argv)
+if __name__ == "__main__":
+  main()
