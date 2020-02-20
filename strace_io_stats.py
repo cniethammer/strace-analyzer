@@ -16,6 +16,7 @@
 # which will generate a set of strace log files, one for each process.
 #
 
+import os
 import sys
 
 try:
@@ -215,7 +216,7 @@ def parseInputFiles(inputfiles):
             continue
           filename = match.group('filename')
           dirfd = match.group('dirfd')
-          if dirfd != "AT_FDCWD":
+          if dirfd != "AT_FDCWD" and not os.path.isabs(filename):
             filename = open_file_tracker.get_filename(int(dirfd)) + "/" + filename
           open_file_tracker.register_open(filename, fd)
           if filename not in file_access_stats:
