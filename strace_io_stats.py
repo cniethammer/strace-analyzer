@@ -16,6 +16,7 @@
 # which will generate a set of strace log files, one for each process.
 #
 
+import os
 import sys
 
 try:
@@ -215,13 +216,35 @@ def parseInputFiles(inputfiles):
             continue
           filename = match.group('filename')
           dirfd = match.group('dirfd')
-          if dirfd != "AT_FDCWD":
+          if dirfd != "AT_FDCWD" and not os.path.isabs(filename):
             filename = open_file_tracker.get_filename(int(dirfd)) + "/" + filename
           open_file_tracker.register_open(filename, fd)
           if filename not in file_access_stats:
             file_access_stats[filename] = new_file_access_stats_entry(filename)
           file_access_stats[filename]['open_times'].append(float(match.group('open_time')))
           file_access_stats[filename]['open_modes'].append(match.group('mode'))
+          file_access_stats[filename]['open_fds'].append(fd)
+          if inputfile not in file_access_stats[filename]['open_from']:
+            file_access_stats[filename]['open_from'][inputfile] = 0
+          file_access_stats[filename]['open_from'][inputfile] = file_access_stats[filename]['open_from'][inputfile] + 1
+        elif "fcntl(" in line:
+          # logging.debug("fcntl:")
+          match = re.search(
+            r'(?P<difftime>[0-9]+\.[0-9]+) fcntl\((?P<fd1>[0-9]+), .*, (?P<fd2>[0-9]+)\).*= (?P<ret>-?[0-9]+).*<(?P<open_time>[0-9]+\.[0-9]+)>',
+            line)
+          # logging.debug("{0}".format(match.groupdict()))
+          if not match:
+             continue
+          fd1 = int(match.group('fd1'))
+          fd2 = int(match.group('fd2'))
+          if int(match.group('ret')) == -1:
+            continue
+          filename = open_file_tracker.get_filename(fd1)
+          open_file_tracker.register_open(filename, fd2)
+          if filename not in file_access_stats:
+            file_access_stats[filename] = new_file_access_stats_entry(filename)
+          file_access_stats[filename]['open_times'].append(float(match.group('open_time')))
+          file_access_stats[filename]['open_modes'].append(file_access_stats[filename]['open_modes'][-1])
           file_access_stats[filename]['open_fds'].append(fd)
           if inputfile not in file_access_stats[filename]['open_from']:
             file_access_stats[filename]['open_from'][inputfile] = 0
