@@ -329,7 +329,7 @@ def parseInputFiles(inputfiles):
           filename = open_file_tracker.get_filename(fd)
           file_access_stats[filename]['close_times'].append(float(match.group('close_time')))
           open_file_tracker.register_close(fd)
-        elif "write(" in line or "writev(" in line or "write64(" in line and not "process_vm_writev" in line:
+        elif ("write(" in line or "writev(" in line or "write64(" in line) and not "process_vm_writev" in line:
           # logging.debug("WRITE(V)(:")
           match = re.search(
                   r'(?P<difftime>[0-9]+\.[0-9]+) p?write(?:64|v)?\((?P<fd>[0-9]+), ?.*, (?P<size>[0-9]+)\).*= (?P<write_size>-?[0-9]+).*<(?P<write_time>[0-9]+\.[0-9]+)>',
@@ -342,7 +342,7 @@ def parseInputFiles(inputfiles):
             file_access_stats[filename]['write_sizes'].append(int(match.group('write_size')))
           else:
             logging.warning("No Open file found for file descriptor {}".format(fd))
-        elif "read(" in line or "readv(" in line or "read64(" in line and not "process_vm_readv" in line:
+        elif ("read(" in line or "readv(" in line or "read64(" in line) and not "process_vm_readv" in line:
           # logging.debug("READ(V):")
           match = re.search(
                   r'(?P<difftime>[0-9]+\.[0-9]+) p?read(?:64|v)?\((?P<fd>[0-9]+), ?.*, (?P<size>[0-9]+)\).*= (?P<read_size>-?[0-9]+).*<(?P<read_time>[0-9]+\.[0-9]+)>',
