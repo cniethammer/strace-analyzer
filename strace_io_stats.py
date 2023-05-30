@@ -394,15 +394,15 @@ def parseInputFiles(inputfiles):
 
 def calc_file_access_stats(file_access_stats):
   for filename in file_access_stats.keys():
-    file_access_stats[filename]['write_time'] = sum(file_access_stats[filename]['write_times'])
+    file_access_stats[filename]['write_time'] = sum(file_access_stats[filename]['write_times'], 0.0)
     file_access_stats[filename]['write_count'] = len(file_access_stats[filename]['write_times'])
     file_access_stats[filename]['write_size'] = sum(file_access_stats[filename]['write_sizes'])
-    file_access_stats[filename]['read_time'] = sum(file_access_stats[filename]['read_times'])
+    file_access_stats[filename]['read_time'] = sum(file_access_stats[filename]['read_times'], 0.0)
     file_access_stats[filename]['read_count'] = len(file_access_stats[filename]['read_times'])
     file_access_stats[filename]['read_size'] = sum(file_access_stats[filename]['read_sizes'])
-    file_access_stats[filename]['open_time'] = sum(file_access_stats[filename]['open_times'])
+    file_access_stats[filename]['open_time'] = sum(file_access_stats[filename]['open_times'], 0.0)
     file_access_stats[filename]['open_count'] = len(file_access_stats[filename]['open_times'])
-    file_access_stats[filename]['close_time'] = sum(file_access_stats[filename]['close_times'])
+    file_access_stats[filename]['close_time'] = sum(file_access_stats[filename]['close_times'], 0.0)
     file_access_stats[filename]['close_count'] = len(file_access_stats[filename]['close_times'])
     file_access_stats[filename]['open_from_count'] = len(file_access_stats[filename]['open_from'])
 
@@ -463,9 +463,23 @@ def main():
   properties = options.format.split(',')
   if 'all' in properties:
     properties = all_properties
-  formatstr = '{0}{1}{2}'.format('{', ':>8} {'.join(map(str, list(range(len(properties))))), ':>8}')
+  formatstr = ""
+  headerstr = ""
+  for i, property in enumerate(properties):
+      if i:
+          formatstr += " "
+          headerstr += " "
+      if len(property) <= 8:
+          headerstr += "{:>.8}".format(property)
+      else:
+          headerstr += property
+      if property.endswith("_time") or property == "time":
+          formatstr += "{" + str(i) + ":>" + str(max(8, len(property))) + ".6}"
+      else:
+          formatstr += "{" + str(i) + ":>" + str(max(8, len(property))) + "}"
   formatstr = formatstr + " {{{0}}}".format(len(properties))
   properties.append('filename')
+  headerstr += " filename"
 
   sort_by = properties[0]
   if options.sort_by not in all_properties:
@@ -475,7 +489,7 @@ def main():
   sorted_filenames = sorted(file_access_stats.values(), reverse=True, key=lambda k: k[sort_by])
 
   print_output_section_title("I/O STATISTICS (sorted by {0})".format(sort_by))
-  print(formatstr.format(*properties))
+  print(headerstr)
   for filedata in sorted_filenames:
     filename = filedata['filename']
     if re.match(options.filter_files, filename):
