@@ -55,3 +55,23 @@ def test_dd_with_syscallist(tmp_path):
     out = stats[outfile]
     assert out["write_size"] == size
     assert out["write_count"] == blocks
+
+
+requires_bash = pytest.mark.skipif(shutil.which("bash") is None,
+                                   reason="bash not installed")
+
+
+@requires_strace
+@requires_bash
+def test_bash_echo_redirect(tmp_path):
+    """Trace the output redirection bash -c 'echo "Hello" > out.bin'.
+
+    Stresses the handling of redirected stdout.
+    """
+    outfile = "out.bin"
+    log = run_strace(tmp_path, "bash", "-c", 'echo "Hello" > ' + outfile)
+
+    stats, _ = parse_files(log)
+    out = stats[outfile]
+    assert out["write_count"] == 1
+    assert out["write_size"] == len("Hello\n")
