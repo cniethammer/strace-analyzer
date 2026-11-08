@@ -88,7 +88,6 @@ def new_file_access_stats_entry(filename):
   data = dict()
   data['filename'] = filename
   data['open_times'] = []
-  data['open_modes'] = []
   data['open_fds'] = []
   data['open_from'] = dict()
   data['write_times'] = []
@@ -193,7 +192,6 @@ def parseInputFiles(inputfiles):
           if filename not in file_access_stats:
             file_access_stats[filename] = new_file_access_stats_entry(filename)
           file_access_stats[filename]['open_times'].append(float(match.group('open_time')))
-          file_access_stats[filename]['open_modes'].append(file_access_stats[filename]['open_modes'][-1])
           file_access_stats[filename]['open_fds'].append(fd)
           if inputfile not in file_access_stats[filename]['open_from']:
             file_access_stats[filename]['open_from'][inputfile] = 0
@@ -212,7 +210,6 @@ def parseInputFiles(inputfiles):
           if filename not in file_access_stats:
             file_access_stats[filename] = new_file_access_stats_entry(filename)
           file_access_stats[filename]['open_times'].append(float(match.group('open_time')))
-          file_access_stats[filename]['open_modes'].append(match.group('mode'))
           file_access_stats[filename]['open_fds'].append(fd)
           if inputfile not in file_access_stats[filename]['open_from']:
             file_access_stats[filename]['open_from'][inputfile] = 0
@@ -234,7 +231,6 @@ def parseInputFiles(inputfiles):
           if filename not in file_access_stats:
             file_access_stats[filename] = new_file_access_stats_entry(filename)
           file_access_stats[filename]['open_times'].append(float(match.group('open_time')))
-          file_access_stats[filename]['open_modes'].append(match.group('mode'))
           file_access_stats[filename]['open_fds'].append(fd)
           if inputfile not in file_access_stats[filename]['open_from']:
             file_access_stats[filename]['open_from'][inputfile] = 0
@@ -256,7 +252,6 @@ def parseInputFiles(inputfiles):
           if filename not in file_access_stats:
             file_access_stats[filename] = new_file_access_stats_entry(filename)
           file_access_stats[filename]['open_times'].append(float(match.group('open_time')))
-          file_access_stats[filename]['open_modes'].append(file_access_stats[filename]['open_modes'][-1])
           file_access_stats[filename]['open_fds'].append(fd2)
           if inputfile not in file_access_stats[filename]['open_from']:
             file_access_stats[filename]['open_from'][inputfile] = 0
@@ -275,7 +270,6 @@ def parseInputFiles(inputfiles):
           if filename not in file_access_stats:
             file_access_stats[filename] = new_file_access_stats_entry(filename)
           file_access_stats[filename]['open_times'].append(float(match.group('open_time')))
-          file_access_stats[filename]['open_modes'].append(match.group('mode'))
           file_access_stats[filename]['open_fds'].append(fd)
         elif syscall == "socket":
           # logging.debug("OPEN SOCKET:")
@@ -291,7 +285,6 @@ def parseInputFiles(inputfiles):
           if filename not in file_access_stats:
             file_access_stats[filename] = new_file_access_stats_entry(filename)
           file_access_stats[filename]['open_times'].append(float(match.group('open_time')))
-          file_access_stats[filename]['open_modes'].append(match.group('mode'))
           file_access_stats[filename]['open_fds'].append(fd)
         elif syscall == "socketpair":
           # logging.debug("OPEN SOCKET PAIR:")
@@ -309,7 +302,6 @@ def parseInputFiles(inputfiles):
           if filename not in file_access_stats:
             file_access_stats[filename] = new_file_access_stats_entry(filename)
           file_access_stats[filename]['open_times'].append(float(match.group('open_time')))
-          file_access_stats[filename]['open_modes'].append(match.group('mode'))
           file_access_stats[filename]['open_fds'].append([fd1, fd2])
         elif syscall == "pipe":
           # logging.debug("OPEN PIPE:")
