@@ -11,11 +11,11 @@ requires_strace = pytest.mark.skipif(shutil.which("strace") is None,
                                      reason="strace not installed")
 
 
-def run_strace(tmp_path, *cmd):
+def run_strace(tmp_path, *cmd, check=True):
     log = tmp_path / "trace.strace"
     # same options as strace-wrapper.sh
     subprocess.run(["strace", "-f", "-r", "-T", "-o", str(log)] + list(cmd),
-                   cwd=str(tmp_path), check=True,
+                   cwd=str(tmp_path), check=check,
                    stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     return log
 
@@ -75,3 +75,19 @@ def test_bash_echo_redirect(tmp_path):
     out = stats[outfile]
     assert out["write_count"] == 1
     assert out["write_size"] == len("Hello\n")
+
+
+@requires_strace
+@requires_bash
+def test_bash_pipe_fd_limit(tmp_path):
+    """Trace bash -c 'ulimit -n 3; echo hi | cat'.
+
+    With only the standard streams allowed, creating the pipe fails
+    (EMFILE) and bash reports an error on stderr. Stresses the handling of
+    failed syscalls.
+    """
+    log = run_strace(tmp_path, "bash", "-c", "ulimit -n 3; echo hi | cat",
+                     check=False)
+
+    stats, _ = parse_files(log)
+    assert stats["stderr"]["write_count"] >= 1  # bash's error message
