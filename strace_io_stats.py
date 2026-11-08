@@ -123,39 +123,88 @@ class OpenFileTracker:
     return self.open_files[fd]
   def get_open_files(self):
     return self.open_files
+  def copy(self):
+    tracker = OpenFileTracker()
+    tracker.open_files = dict(self.open_files)
+    return tracker
 
 
-# Name of the syscall at the start of a line produced by strace -f -r -T,
-# e.g. "1234      0.000049 openat(AT_FDCWD, ...". Only this position is
+class ProcessTracker:
+  """File descriptor tables of the traced processes.
+
+  Each process has its own table. A child created by fork() or clone()
+  starts with a copy of its parent's table, threads (clone with
+  CLONE_FILES) share the table of their parent.
+  """
+  def __init__(self):
+    self.tables = dict()  # pid -> OpenFileTracker
+
+  def table(self, pid):
+    """Table of a process, created with the standard streams if unknown."""
+    if pid not in self.tables:
+      tracker = OpenFileTracker()
+      tracker.register_open("stdin", 0)
+      tracker.register_open("stdout", 1)
+      tracker.register_open("stderr", 2)
+      self.tables[pid] = tracker
+    return self.tables[pid]
+
+  def clone(self, parent, child, share_files):
+    parent_table = self.table(parent)
+    self.tables[child] = parent_table if share_files else parent_table.copy()
+
+  def exit(self, pid):
+    self.tables.pop(pid, None)
+
+  def get_open_files(self):
+    """Open files of all remaining processes as {(pid, fd): filename}."""
+    open_files = dict()
+    seen = set()
+    for pid, tracker in self.tables.items():
+      if id(tracker) in seen:  # table shared by threads
+        continue
+      seen.add(id(tracker))
+      for fd, filename in tracker.get_open_files().items():
+        open_files[(pid, fd)] = filename
+    return open_files
+
+
+# Process id (strace -f, None without) and name of the syscall at the start
+# of a line produced by strace -f -r -T, e.g.
+# "1234      0.000049 openat(AT_FDCWD, ...". Only this position is
 # considered, so syscall names inside string arguments are never matched.
-SYSCALL_NAME_RE = re.compile(r'^\s*(?:[0-9]+\s+)?[0-9]+\.[0-9]+\s+(\w+)\(')
+SYSCALL_NAME_RE = re.compile(r'^\s*(?:([0-9]+)\s+)?[0-9]+\.[0-9]+\s+(\w+)\(')
 # Process id at the start of a line (strace -f), None for traces without it.
 LINE_PID_RE = re.compile(r'^\s*([0-9]+)\s+[0-9]+\.[0-9]+\s')
 # Markers of interrupted syscalls, see parseInputFiles(). The optional space
 # after "resumed>" is printed by strace 4 only.
 UNFINISHED_SUFFIX = " <unfinished ...>"
 RESUMED_RE = re.compile(r'^\s*(?:([0-9]+)\s+)?[0-9]+\.[0-9]+\s+<\.\.\. \w+ resumed> ?')
+# End of a process: "1234 0.000010 +++ exited with 0 +++" or "+++ killed by ..."
+EXITED_RE = re.compile(r'^\s*(?:([0-9]+)\s+)?[0-9]+\.[0-9]+\s+\+\+\+ (?:exited|killed) ')
+# Syscalls creating a new process or thread, their return value is the new pid.
+CLONE_SYSCALLS = {"clone", "clone3", "fork", "vfork"}
+CLONE_START_RE = re.compile(r'^\s*(?:[0-9]+\s+)?[0-9]+\.[0-9]+\s+(?:clone3?|v?fork)\(')
+RETURN_VALUE_RE = re.compile(r'\) += (-?[0-9]+)[^=]*$')
+STANDARD_STREAMS = {0: "stdin", 1: "stdout", 2: "stderr"}
 READ_SYSCALLS = {"read", "readv", "pread64", "preadv"}
 WRITE_SYSCALLS = {"write", "writev", "pwrite64", "pwritev"}
 
 
 def parseInputFiles(inputfiles):
-  open_file_tracker = OpenFileTracker()
   file_access_stats = dict()
   unknown_calls = dict()
 
-  open_file_tracker.register_open("stdin", 0)
-  file_access_stats["stdin"] = new_file_access_stats_entry("stdin")
-  open_file_tracker.register_open("stdout", 1)
-  file_access_stats["stdout"] = new_file_access_stats_entry("stdout")
-  open_file_tracker.register_open("stderr", 2)
-  file_access_stats["stderr"] = new_file_access_stats_entry("stderr")
+  for filename in STANDARD_STREAMS.values():
+    file_access_stats[filename] = new_file_access_stats_entry(filename)
 
   num_ignored_lines = 0
   unfinished = dict()
 
   for inputfile in inputfiles:
     logging.info("Processing " + str(inputfile) + " ...")
+    # each input file contains independent processes, e.g. one MPI rank
+    processes = ProcessTracker()
     with open(inputfile, 'r') as fh:
       for lineno, line in enumerate(fh):
         # logging.debug("LINE {0}: {1}".format(lineno, line.strip()))
@@ -183,10 +232,33 @@ def parseInputFiles(inputfiles):
             continue
           line = unfinished.pop(pid) + line[resumed.end():]
 
+        if line.endswith("+++\n"):
+          exited = EXITED_RE.match(line)
+          if exited:
+            processes.exit(exited.group(1))
+            continue
+
         name_match = SYSCALL_NAME_RE.match(line)
-        syscall = name_match.group(1) if name_match else None
+        pid, syscall = name_match.groups() if name_match else (None, None)
+        if pid not in processes.tables:
+          # A child may show up before the clone() of its parent returned.
+          # If exactly one clone() is pending, it belongs to that parent.
+          parents = [p for p, start in unfinished.items()
+                     if CLONE_START_RE.match(start)]
+          if len(parents) == 1:
+            processes.clone(parents[0], pid,
+                            "CLONE_FILES" in unfinished[parents[0]])
+        open_file_tracker = processes.table(pid)
+
+        if syscall in CLONE_SYSCALLS:
+          ret = RETURN_VALUE_RE.search(line)
+          if ret and int(ret.group(1)) > 0:
+            child = ret.group(1)
+            if child not in processes.tables:  # see above
+              processes.clone(pid, child, "CLONE_FILES" in line)
         if syscall == "exit_group":
           # only this process ends; with strace -f others continue
+          processes.exit(pid)
           continue
         elif syscall == "execve":
           # logging.debug("execve")
@@ -395,22 +467,17 @@ def parseInputFiles(inputfiles):
             unknown_calls[callname]['times'].append(calltime)
             unknown_calls[callname]['count'] = unknown_calls[callname]['count'] + 1
 
+    # processes which did not exit within the trace
+    open_files = {key: filename
+                  for key, filename in processes.get_open_files().items()
+                  if STANDARD_STREAMS.get(key[1]) != filename}
+    if open_files:
+      logging.warning("There are open files at the end of {}:".format(inputfile))
+      for (pid, fd), filename in sorted(open_files.items(), key=str):
+        logging.warning("  {}[{}] (pid {})".format(filename, fd, pid))
+
   if num_ignored_lines > 0:
     logging.warning("Number of ignored lines: {0}".format(num_ignored_lines))
-  if open_file_tracker.is_open(0):
-    logging.warning("Ignoring open sdtin[0]")
-    open_file_tracker.register_close(0)
-  if open_file_tracker.is_open(1):
-    logging.warning("Ignoring open sdtout[1]")
-    open_file_tracker.register_close(1)
-  if open_file_tracker.is_open(2):
-    logging.warning("Ignoring open sdterr[2]")
-    open_file_tracker.register_close(2)
-  open_files = open_file_tracker.get_open_files()
-  if open_files:
-    logging.warning("There are open files at the end of file processing:")
-    for fd in open_files.keys():
-      logging.warning("  " + open_files[fd] + "[" + str(fd) + "]")
 
   return file_access_stats, unknown_calls
 
