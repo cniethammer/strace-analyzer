@@ -1,6 +1,7 @@
 """End-to-end tests: trace real programs with strace and run the analyzer."""
 import shutil
 import subprocess
+import sys
 from pathlib import Path
 
 import pytest
@@ -91,3 +92,47 @@ def test_bash_pipe_fd_limit(tmp_path):
 
     stats, _ = parse_files(log)
     assert stats["stderr"]["write_count"] >= 1  # bash's error message
+
+
+@requires_strace
+def test_python_threads_blocking_fifo_reads(tmp_path):
+    """Two threads block in openat() and read() on FIFOs.
+
+    While they wait, the main thread keeps issuing syscalls, so strace
+    splits the blocked calls into '<unfinished ...>' and '<... resumed>'
+    lines. Stresses the handling of interrupted and resumed syscalls.
+    """
+    script = """
+import os, threading, time
+
+def reader(path):
+    fd = os.open(path, os.O_RDONLY)  # blocks until the writer opens the FIFO
+    os.read(fd, 4096)                # blocks until data arrives
+    os.close(fd)
+
+os.mkfifo("fifo1")
+os.mkfifo("fifo2")
+threads = [threading.Thread(target=reader, args=(p,)) for p in ("fifo1", "fifo2")]
+for t in threads:
+    t.start()
+time.sleep(0.2)
+w1 = os.open("fifo1", os.O_WRONLY)
+w2 = os.open("fifo2", os.O_WRONLY)
+time.sleep(0.2)
+os.write(w1, b"x" * 100)
+os.write(w2, b"y" * 200)
+for t in threads:
+    t.join()
+"""
+    log = run_strace(tmp_path, sys.executable, "-S", "-c", script)
+    trace = log.read_text()
+    assert "<unfinished ...>" in trace and "resumed>" in trace, \
+        "no interrupted syscalls in the trace, the test checks nothing"
+
+    stats, _ = parse_files(log)
+    for fifo, size in (("fifo1", 100), ("fifo2", 200)):
+        assert stats[fifo]["open_count"] == 2  # reader + writer
+        assert stats[fifo]["read_count"] == 1
+        assert stats[fifo]["read_size"] == size
+        assert stats[fifo]["write_count"] == 1
+        assert stats[fifo]["write_size"] == size
