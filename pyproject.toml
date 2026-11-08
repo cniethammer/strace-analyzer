@@ -27,6 +27,9 @@ classifiers = [
     "Topic :: System :: Monitoring",
 ]
 
+[project.optional-dependencies]
+test = ["pytest>=7"]
+
 [project.scripts]
 strace-io-stats = "strace_io_stats:main"
 
@@ -38,3 +41,9 @@ Issues = "https://github.com/cniethammer/strace-analyzer/issues"
 [tool.setuptools]
 py-modules = ["strace_io_stats"]
 script-files = ["strace-wrapper.sh"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
+xfail_strict = true
+addopts = "-ra"
