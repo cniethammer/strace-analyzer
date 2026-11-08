@@ -126,6 +126,14 @@ class OpenFileTracker:
     return self.open_files
 
 
+# Name of the syscall at the start of a line produced by strace -f -r -T,
+# e.g. "1234      0.000049 openat(AT_FDCWD, ...". Only this position is
+# considered, so syscall names inside string arguments are never matched.
+SYSCALL_NAME_RE = re.compile(r'^\s*(?:[0-9]+\s+)?[0-9]+\.[0-9]+\s+(\w+)\(')
+READ_SYSCALLS = {"read", "readv", "pread64", "preadv"}
+WRITE_SYSCALLS = {"write", "writev", "pwrite64", "pwritev"}
+
+
 def parseInputFiles(inputfiles):
   open_file_tracker = OpenFileTracker()
   file_access_stats = dict()
@@ -160,13 +168,16 @@ def parseInputFiles(inputfiles):
           rest = line[line.find(" resumed> ") + len(" resumed> "):].rstrip()
           line = unfinished[pid] + rest
           del unfinished[pid]
-        if "execve" in line:
+
+        name_match = SYSCALL_NAME_RE.match(line)
+        syscall = name_match.group(1) if name_match else None
+        if syscall == "execve":
           # logging.debug("execve")
           match = re.search(
             r'(?P<difftime>[0-9]+\.[0-9]+) execve\((.*)\).*= (?P<fd>-?[0-9]+).*<(?P<open_time>[0-9]+\.[0-9]+)>', line)
           if match:
             continue
-        elif "dup2(" in line:
+        elif syscall == "dup2":
           # logging.debug("dup2:")
           match = re.search(
             r'(?P<difftime>[0-9]+\.[0-9]+) dup2\((?P<fd1>[0-9]+), (?P<fd2>[0-9]+)\).*= (?P<fd>-?[0-9]+).*<(?P<open_time>[0-9]+\.[0-9]+)>',
@@ -186,7 +197,7 @@ def parseInputFiles(inputfiles):
           if inputfile not in file_access_stats[filename]['open_from']:
             file_access_stats[filename]['open_from'][inputfile] = 0
           file_access_stats[filename]['open_from'][inputfile] = file_access_stats[filename]['open_from'][inputfile] + 1
-        elif "open(" in line:
+        elif syscall == "open":
           # logging.debug("OPEN:")
           match = re.search(
             r'(?P<difftime>[0-9]+\.[0-9]+) open\(\"(?P<filename>.*)\", (?P<mode>.*)\).*= (?P<fd>-?[0-9]+).*<(?P<open_time>[0-9]+\.[0-9]+)>',
@@ -205,7 +216,7 @@ def parseInputFiles(inputfiles):
           if inputfile not in file_access_stats[filename]['open_from']:
             file_access_stats[filename]['open_from'][inputfile] = 0
           file_access_stats[filename]['open_from'][inputfile] = file_access_stats[filename]['open_from'][inputfile] + 1
-        elif "openat(" in line:
+        elif syscall == "openat":
           # logging.debug("OPEN:")
           match = re.search(
             r'(?P<difftime>[0-9]+\.[0-9]+) openat\((?P<dirfd>.*), \"(?P<filename>.*)\", (?P<mode>.*)\).*= (?P<fd>-?[0-9]+).*<(?P<open_time>[0-9]+\.[0-9]+)>',
@@ -227,7 +238,7 @@ def parseInputFiles(inputfiles):
           if inputfile not in file_access_stats[filename]['open_from']:
             file_access_stats[filename]['open_from'][inputfile] = 0
           file_access_stats[filename]['open_from'][inputfile] = file_access_stats[filename]['open_from'][inputfile] + 1
-        elif "fcntl(" in line:
+        elif syscall == "fcntl":
           # logging.debug("fcntl:")
           match = re.search(
             r'(?P<difftime>[0-9]+\.[0-9]+) fcntl\((?P<fd1>[0-9]+), .*, (?P<fd2>[0-9]+)\).*= (?P<ret>-?[0-9]+).*<(?P<open_time>[0-9]+\.[0-9]+)>',
@@ -249,7 +260,7 @@ def parseInputFiles(inputfiles):
           if inputfile not in file_access_stats[filename]['open_from']:
             file_access_stats[filename]['open_from'][inputfile] = 0
           file_access_stats[filename]['open_from'][inputfile] = file_access_stats[filename]['open_from'][inputfile] + 1
-        elif "eventfd2(" in line:
+        elif syscall == "eventfd2":
           # logging.debug("OPEN EVENTFD:")
           match = re.search(
             r'(?P<difftime>[0-9]+\.[0-9]+) eventfd2\((?P<mode>.*)\).*= (?P<fd>-?[0-9]+).*<(?P<open_time>[0-9]+\.[0-9]+)>',
@@ -265,7 +276,7 @@ def parseInputFiles(inputfiles):
           file_access_stats[filename]['open_times'].append(float(match.group('open_time')))
           file_access_stats[filename]['open_modes'].append(match.group('mode'))
           file_access_stats[filename]['open_fds'].append(fd)
-        elif "socket(" in line:
+        elif syscall == "socket":
           # logging.debug("OPEN SOCKET:")
           match = re.search(
             r'(?P<difftime>[0-9]+\.[0-9]+) socket\((?P<mode>.*)\).*= (?P<fd>-?[0-9]+).*<(?P<open_time>[0-9]+\.[0-9]+)>',
@@ -281,7 +292,7 @@ def parseInputFiles(inputfiles):
           file_access_stats[filename]['open_times'].append(float(match.group('open_time')))
           file_access_stats[filename]['open_modes'].append(match.group('mode'))
           file_access_stats[filename]['open_fds'].append(fd)
-        elif "socketpair(" in line:
+        elif syscall == "socketpair":
           # logging.debug("OPEN SOCKET PAIR:")
           match = re.search(
             r'(?P<difftime>[0-9]+\.[0-9]+) socketpair\((?P<mode>.*), \[(?P<fd1>[0-9]+), (?P<fd2>[0-9]+)\]\).*= (?P<ret>-?[0-9]+).*<(?P<open_time>[0-9]+\.[0-9]+)>',
@@ -299,7 +310,7 @@ def parseInputFiles(inputfiles):
           file_access_stats[filename]['open_times'].append(float(match.group('open_time')))
           file_access_stats[filename]['open_modes'].append(match.group('mode'))
           file_access_stats[filename]['open_fds'].append([fd1, fd2])
-        elif "pipe(" in line:
+        elif syscall == "pipe":
           # logging.debug("OPEN PIPE:")
           match = re.search(
             r'(?P<difftime>[0-9]+\.[0-9]+) pipe\(\[(?P<fd1>[0-9]+), (?P<fd2>[0-9]+)\]\).*= (?P<ret>-?[0-9]+).*<(?P<open_time>[0-9]+\.[0-9]+)>',
@@ -316,7 +327,7 @@ def parseInputFiles(inputfiles):
             file_access_stats[filename] = new_file_access_stats_entry(filename)
           file_access_stats[filename]['open_times'].append(float(match.group('open_time')))
           file_access_stats[filename]['open_fds'].append([fd1, fd2])
-        elif "close(" in line:
+        elif syscall == "close":
           # logging.debug("CLOSE:")
           match = re.search(
             r'(?P<difftime>[0-9]+\.[0-9]+) close\((?P<fd>[0-9]+)\).*= (?P<ret>-?[0-9]+).*<(?P<close_time>[0-9]+\.[0-9]+)>',
@@ -329,7 +340,7 @@ def parseInputFiles(inputfiles):
           filename = open_file_tracker.get_filename(fd)
           file_access_stats[filename]['close_times'].append(float(match.group('close_time')))
           open_file_tracker.register_close(fd)
-        elif ("write(" in line or "writev(" in line or "write64(" in line) and not "process_vm_writev" in line:
+        elif syscall in WRITE_SYSCALLS:
           # logging.debug("WRITE(V)(:")
           match = re.search(
                   r'(?P<difftime>[0-9]+\.[0-9]+) p?write(?:64|v)?\((?P<fd>[0-9]+), ?.*, (?P<size>[0-9]+)\).*= (?P<write_size>-?[0-9]+).*<(?P<write_time>[0-9]+\.[0-9]+)>',
@@ -342,7 +353,7 @@ def parseInputFiles(inputfiles):
             file_access_stats[filename]['write_sizes'].append(int(match.group('write_size')))
           else:
             logging.warning("No Open file found for file descriptor {}".format(fd))
-        elif ("read(" in line or "readv(" in line or "read64(" in line) and not "process_vm_readv" in line:
+        elif syscall in READ_SYSCALLS:
           # logging.debug("READ(V):")
           match = re.search(
                   r'(?P<difftime>[0-9]+\.[0-9]+) p?read(?:64|v)?\((?P<fd>[0-9]+), ?.*, (?P<size>[0-9]+)\).*= (?P<read_size>-?[0-9]+).*<(?P<read_time>[0-9]+\.[0-9]+)>',
