@@ -156,8 +156,6 @@ def parseInputFiles(inputfiles):
         # logging.debug("LINE {0}: {1}".format(lineno, line.strip()))
         if "ERESTARTSYS" in line:
           continue
-        if "exit_group" in line:
-          break
 
         if "<unfinished ...>" in line:
           pid = int(line.split()[0])
@@ -171,7 +169,10 @@ def parseInputFiles(inputfiles):
 
         name_match = SYSCALL_NAME_RE.match(line)
         syscall = name_match.group(1) if name_match else None
-        if syscall == "execve":
+        if syscall == "exit_group":
+          # only this process ends; with strace -f others continue
+          continue
+        elif syscall == "execve":
           # logging.debug("execve")
           match = re.search(
             r'(?P<difftime>[0-9]+\.[0-9]+) execve\((.*)\).*= (?P<fd>-?[0-9]+).*<(?P<open_time>[0-9]+\.[0-9]+)>', line)
