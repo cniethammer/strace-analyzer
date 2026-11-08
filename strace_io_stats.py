@@ -245,7 +245,7 @@ def parseInputFiles(inputfiles):
             file_access_stats[filename] = new_file_access_stats_entry(filename)
           file_access_stats[filename]['open_times'].append(float(match.group('open_time')))
           file_access_stats[filename]['open_modes'].append(file_access_stats[filename]['open_modes'][-1])
-          file_access_stats[filename]['open_fds'].append(fd)
+          file_access_stats[filename]['open_fds'].append(fd2)
           if inputfile not in file_access_stats[filename]['open_from']:
             file_access_stats[filename]['open_from'][inputfile] = 0
           file_access_stats[filename]['open_from'][inputfile] = file_access_stats[filename]['open_from'][inputfile] + 1
