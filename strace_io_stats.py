@@ -303,10 +303,11 @@ def parseInputFiles(inputfiles):
             file_access_stats[filename] = new_file_access_stats_entry(filename)
           file_access_stats[filename]['open_times'].append(float(match.group('open_time')))
           file_access_stats[filename]['open_fds'].append([fd1, fd2])
-        elif syscall == "pipe":
+        elif syscall in ("pipe", "pipe2"):
           # logging.debug("OPEN PIPE:")
+          # pipe([3, 4]) = 0, pipe2([3, 4], O_CLOEXEC) = 0
           match = re.search(
-            r'(?P<difftime>[0-9]+\.[0-9]+) pipe\(\[(?P<fd1>[0-9]+), (?P<fd2>[0-9]+)\]\).*= (?P<ret>-?[0-9]+).*<(?P<open_time>[0-9]+\.[0-9]+)>',
+            r'(?P<difftime>[0-9]+\.[0-9]+) pipe2?\(\[(?P<fd1>[0-9]+), (?P<fd2>[0-9]+)\](?:, [^)]*)?\).*= (?P<ret>-?[0-9]+).*<(?P<open_time>[0-9]+\.[0-9]+)>',
             line)
           # logging.debug("{0}".format(match.groupdict()))
           fd1 = int(match.group('fd1'))
