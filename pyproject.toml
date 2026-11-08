@@ -1,0 +1,40 @@
+[build-system]
+requires = ["setuptools>=77"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "strace-analyzer"
+version = "0.1"
+description = "Analyze strace logs and report I/O statistics per accessed file for serial and MPI-parallel applications"
+readme = "README.md"
+license = "BSD-3-Clause"
+license-files = ["LICENSE"]
+authors = [
+    { name = "Christoph Niethammer", email = "niethammer@hlrs.de" },
+]
+requires-python = ">=3.9"
+dependencies = []
+keywords = ["strace", "I/O", "profiling", "HPC", "MPI", "performance analysis"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Environment :: Console",
+    "Intended Audience :: Developers",
+    "Intended Audience :: Science/Research",
+    "Operating System :: POSIX :: Linux",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3 :: Only",
+    "Topic :: System :: Benchmark",
+    "Topic :: System :: Monitoring",
+]
+
+[project.scripts]
+strace-io-stats = "strace_io_stats:main"
+
+[project.urls]
+Homepage = "https://github.com/cniethammer/strace-analyzer"
+Repository = "https://github.com/cniethammer/strace-analyzer"
+Issues = "https://github.com/cniethammer/strace-analyzer/issues"
+
+[tool.setuptools]
+py-modules = ["strace_io_stats"]
+script-files = ["strace-wrapper.sh"]
