@@ -14,7 +14,8 @@ LOGDIR=${LOGDIR:=strace-logs}
 if ! test -d $LOGDIR ; then
   mkdir -p $LOGDIR
 fi
-LOGFILE="$LOGDIR/${MPI_RANK:+r${MPI_RANK}-}$(hostname).$$.strace"
+HOST=$(uname -n 2>/dev/null || cat /proc/sys/kernel/hostname)
+LOGFILE="$LOGDIR/${MPI_RANK:+r${MPI_RANK}-}${HOST}.$$.strace"
 
 
 if  ! test -z $MPI_RANK  &&  ! test -z $RANK_FILTER  &&  ! [[ $MPI_RANK =~ $RANK_FILTER ]] ; then
