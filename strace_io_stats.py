@@ -310,6 +310,8 @@ def parseInputFiles(inputfiles):
             r'(?P<difftime>[0-9]+\.[0-9]+) pipe2?\(\[(?P<fd1>[0-9]+), (?P<fd2>[0-9]+)\](?:, [^)]*)?\).*= (?P<ret>-?[0-9]+).*<(?P<open_time>[0-9]+\.[0-9]+)>',
             line)
           # logging.debug("{0}".format(match.groupdict()))
+          if not match:  # failed call, e.g. pipe2(0x7ffd..., 0) = -1 EMFILE
+            continue
           fd1 = int(match.group('fd1'))
           fd2 = int(match.group('fd2'))
           if match.group('ret') == -1:
