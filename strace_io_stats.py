@@ -129,6 +129,12 @@ class OpenFileTracker:
 # e.g. "1234      0.000049 openat(AT_FDCWD, ...". Only this position is
 # considered, so syscall names inside string arguments are never matched.
 SYSCALL_NAME_RE = re.compile(r'^\s*(?:[0-9]+\s+)?[0-9]+\.[0-9]+\s+(\w+)\(')
+# Process id at the start of a line (strace -f), None for traces without it.
+LINE_PID_RE = re.compile(r'^\s*([0-9]+)\s+[0-9]+\.[0-9]+\s')
+# Markers of interrupted syscalls, see parseInputFiles(). The optional space
+# after "resumed>" is printed by strace 4 only.
+UNFINISHED_SUFFIX = " <unfinished ...>"
+RESUMED_RE = re.compile(r'^\s*(?:([0-9]+)\s+)?[0-9]+\.[0-9]+\s+<\.\.\. \w+ resumed> ?')
 READ_SYSCALLS = {"read", "readv", "pread64", "preadv"}
 WRITE_SYSCALLS = {"write", "writev", "pwrite64", "pwritev"}
 
@@ -156,15 +162,26 @@ def parseInputFiles(inputfiles):
         if "ERESTARTSYS" in line:
           continue
 
-        if "<unfinished ...>" in line:
-          pid = int(line.split()[0])
-          unfinished[pid] = line[:-len(" <unfinished ...>")].rstrip()
+        # Interrupted syscalls are split into two lines, which are joined
+        # again here, e.g. for strace >= 5:
+        #   1234 0.000010 read(3 <unfinished ...>
+        #   1234 0.000050 <... read resumed>, "abc", 4096) = 3 <0.000050>
+        # and for strace 4:
+        #   1234 0.000010 read(3,  <unfinished ...>
+        #   1234 0.000050 <... read resumed> "abc", 4096) = 3 <0.000050>
+        if line.rstrip("\n").endswith(UNFINISHED_SUFFIX):
+          pid_match = LINE_PID_RE.match(line)
+          pid = pid_match.group(1) if pid_match else None
+          unfinished[pid] = line.rstrip("\n")[:-len(UNFINISHED_SUFFIX)]
           continue
-        elif " resumed> " in line:
-          pid = int(line.split()[0])
-          rest = line[line.find(" resumed> ") + len(" resumed> "):].rstrip()
-          line = unfinished[pid] + rest
-          del unfinished[pid]
+        resumed = RESUMED_RE.match(line)
+        if resumed:
+          pid = resumed.group(1)
+          if pid not in unfinished:
+            logging.debug("Resumed syscall without start: '{}'".format(line.strip()))
+            num_ignored_lines = num_ignored_lines + 1
+            continue
+          line = unfinished.pop(pid) + line[resumed.end():]
 
         name_match = SYSCALL_NAME_RE.match(line)
         syscall = name_match.group(1) if name_match else None
