@@ -46,3 +46,20 @@ def test_other_commands_do_not_duplicate(parse, line):
     stats, _ = parse(OPEN_DATA + "    100 0.000010 " + line + "\n")
     assert stats["data.bin"]["open_count"] == 1
     assert stats["data.bin"]["open_fds"] == [3]
+
+
+# ---------------------------------------------------------------------------
+# the new file descriptor is the return value
+# ---------------------------------------------------------------------------
+
+def test_dupfd_registers_correct_fd(parse):
+    # e.g. bash 'echo hi 2>&1 >out.bin' when fd 10 is taken already
+    stats, _ = parse(OPEN_DATA + """
+    100 0.000010 fcntl(3, F_DUPFD, 10) = 11 <0.000010>
+    100 0.000010 write(11, "0123456789", 10) = 10 <0.000010>
+    100 0.000010 write(10, "abcde", 5) = 5 <0.000010>
+    """)
+    f = stats["data.bin"]
+    assert f["open_fds"] == [3, 11]
+    assert f["write_count"] == 1
+    assert f["write_size"] == 10
