@@ -359,8 +359,9 @@ def parseInputFiles(inputfiles):
           file_access_stats[filename]['open_from'][inputfile] = file_access_stats[filename]['open_from'][inputfile] + 1
         elif syscall == "fcntl":
           # logging.debug("fcntl:")
+          # only F_DUPFD and F_DUPFD_CLOEXEC duplicate a file descriptor,
           match = re.search(
-            r'(?P<difftime>[0-9]+\.[0-9]+) fcntl\((?P<fd1>[0-9]+), .*, (?P<fd2>[0-9]+)\).*= (?P<ret>-?[0-9]+).*<(?P<open_time>[0-9]+\.[0-9]+)>',
+            r'(?P<difftime>[0-9]+\.[0-9]+) fcntl\((?P<fd1>[0-9]+), F_DUPFD(?:_CLOEXEC)?, (?P<fd2>[0-9]+)\).*= (?P<ret>-?[0-9]+).*<(?P<open_time>[0-9]+\.[0-9]+)>',
             line)
           # logging.debug("{0}".format(match.groupdict()))
           if not match:
