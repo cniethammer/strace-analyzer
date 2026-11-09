@@ -37,6 +37,15 @@ def test_dup3(parse):
     assert stats["data.bin"]["write_size"] == 10
 
 
+def test_duplicate_stays_valid_after_closing_original(parse):
+    stats, _ = parse(OPEN_DATA + """
+    100 0.000010 dup(3) = 4 <0.000010>
+    100 0.000010 close(3) = 0 <0.000010>
+    100 0.000010 write(4, "0123456789", 10) = 10 <0.000010>
+    """)
+    assert stats["data.bin"]["write_size"] == 10
+
+
 def test_dup2_redirects_stdout(parse):
     stats, _ = parse(OPEN_DATA + """
     100 0.000010 dup2(3, 1) = 1 <0.000010>
