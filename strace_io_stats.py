@@ -361,21 +361,23 @@ def parseInputFiles(inputfiles):
           # logging.debug("fcntl:")
           # only F_DUPFD and F_DUPFD_CLOEXEC duplicate a file descriptor,
           match = re.search(
-            r'(?P<difftime>[0-9]+\.[0-9]+) fcntl\((?P<fd1>[0-9]+), F_DUPFD(?:_CLOEXEC)?, (?P<fd2>[0-9]+)\).*= (?P<ret>-?[0-9]+).*<(?P<open_time>[0-9]+\.[0-9]+)>',
+            r'(?P<difftime>[0-9]+\.[0-9]+) fcntl\((?P<fd1>[0-9]+), F_DUPFD(?:_CLOEXEC)?, [0-9]+\).*= (?P<ret>-?[0-9]+).*<(?P<open_time>[0-9]+\.[0-9]+)>',
             line)
           # logging.debug("{0}".format(match.groupdict()))
           if not match:
              continue
           fd1 = int(match.group('fd1'))
-          fd2 = int(match.group('fd2'))
-          if int(match.group('ret')) == -1:
+          # the new file descriptor is the return value, the third argument
+          # is only the lowest acceptable one
+          fd = int(match.group('ret'))
+          if fd == -1:
             continue
           filename = open_file_tracker.get_filename(fd1)
-          open_file_tracker.register_open(filename, fd2)
+          open_file_tracker.register_open(filename, fd)
           if filename not in file_access_stats:
             file_access_stats[filename] = new_file_access_stats_entry(filename)
           file_access_stats[filename]['open_times'].append(float(match.group('open_time')))
-          file_access_stats[filename]['open_fds'].append(fd2)
+          file_access_stats[filename]['open_fds'].append(fd)
           if inputfile not in file_access_stats[filename]['open_from']:
             file_access_stats[filename]['open_from'][inputfile] = 0
           file_access_stats[filename]['open_from'][inputfile] = file_access_stats[filename]['open_from'][inputfile] + 1
