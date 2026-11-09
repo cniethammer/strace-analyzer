@@ -66,6 +66,14 @@ def test_dup2_onto_open_fd_replaces_it(parse):
     assert stats["other.bin"]["write_count"] == 0
 
 
+def test_dup2_onto_itself_is_no_new_open(parse):
+    # dup2(fd, fd) only checks that fd is valid
+    stats, _ = parse(OPEN_DATA + """
+    100 0.000010 dup2(3, 3) = 3 <0.000010>
+    """)
+    assert stats["data.bin"]["open_count"] == 1
+
+
 def test_failed_duplication_is_ignored(parse):
     stats, _ = parse(OPEN_DATA + """
     100 0.000010 dup(9) = -1 EBADF (Bad file descriptor) <0.000010>
