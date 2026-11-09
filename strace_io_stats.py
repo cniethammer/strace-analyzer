@@ -290,10 +290,10 @@ def parseInputFiles(inputfiles):
             r'(?P<difftime>[0-9]+\.[0-9]+) execve\((.*)\).*= (?P<fd>-?[0-9]+).*<(?P<open_time>[0-9]+\.[0-9]+)>', line)
           if match:
             continue
-        elif syscall == "dup2":
-          # logging.debug("dup2:")
+        elif syscall in ("dup", "dup2", "dup3"):
+          # dup(3) = 4, dup2(3, 5) = 5, dup3(3, 5, O_CLOEXEC) = 5
           match = re.search(
-            r'(?P<difftime>[0-9]+\.[0-9]+) dup2\((?P<fd1>[0-9]+), (?P<fd2>[0-9]+)\).*= (?P<fd>-?[0-9]+).*<(?P<open_time>[0-9]+\.[0-9]+)>',
+            r'(?P<difftime>[0-9]+\.[0-9]+) dup[23]?\((?P<fd1>[0-9]+)(?:, [^)]*)?\).*= (?P<fd>-?[0-9]+).*<(?P<open_time>[0-9]+\.[0-9]+)>',
             line)
           # logging.debug("{0}".format(match.groupdict()))
           fd1 = int(match.group('fd1'))
