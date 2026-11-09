@@ -92,3 +92,16 @@ def test_duplicating_unknown_fd_does_not_crash(parse, caplog):
     """)
     assert "file descriptor 7" in caplog.text
     assert stats["stdout"]["write_count"] == 0
+
+
+def test_io_on_duplicated_unknown_fd_is_counted(parse):
+    # I/O on both file descriptors is accounted to a pseudo file <unknown>
+    stats, _ = parse("""
+        100 0.000000 dup2(7, 1) = 1 <0.000010>
+        100 0.000010 write(1, "0123456789", 10) = 10 <0.000010>
+        100 0.000010 write(7, "abcde", 5) = 5 <0.000010>
+    """)
+    unknown = stats["<unknown>"]
+    assert unknown["write_count"] == 2
+    assert unknown["write_size"] == 15
+    assert stats["stdout"]["write_count"] == 0
