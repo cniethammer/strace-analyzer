@@ -187,6 +187,8 @@ CLONE_SYSCALLS = {"clone", "clone3", "fork", "vfork"}
 CLONE_START_RE = re.compile(r'^\s*(?:[0-9]+\s+)?[0-9]+\.[0-9]+\s+(?:clone3?|v?fork)\(')
 RETURN_VALUE_RE = re.compile(r'\) += (-?[0-9]+)[^=]*$')
 STANDARD_STREAMS = {0: "stdin", 1: "stdout", 2: "stderr"}
+# Pseudo file for file descriptors whose origin is not part of the trace.
+UNKNOWN_FILE = "<unknown>"
 READ_SYSCALLS = {"read", "readv", "pread64", "preadv"}
 WRITE_SYSCALLS = {"write", "writev", "pwrite64", "pwritev"}
 # Syscalls copying data between two file descriptors inside the kernel, with
@@ -302,6 +304,11 @@ def parseInputFiles(inputfiles):
             continue
           if fd == fd1:  # dup2(fd, fd) only checks that fd is valid
             continue
+          if not open_file_tracker.is_open(fd1):
+            # e.g. inherited from outside of the trace: the call succeeded,
+            # so track both file descriptors as referring to an unknown file
+            logging.warning("Duplicating unrecognized file descriptor {0}".format(fd1))
+            open_file_tracker.register_open(UNKNOWN_FILE, fd1)
           filename = open_file_tracker.get_filename(fd1)
           open_file_tracker.register_open(filename, fd)
           if filename not in file_access_stats:
