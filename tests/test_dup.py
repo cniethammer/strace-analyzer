@@ -10,9 +10,27 @@ OPEN_DATA = """
 """
 
 
+def test_dup(parse):
+    stats, _ = parse(OPEN_DATA + """
+    100 0.000010 dup(3) = 4 <0.000010>
+    100 0.000010 write(4, "0123456789", 10) = 10 <0.000010>
+    """)
+    assert stats["data.bin"]["open_count"] == 2
+    assert stats["data.bin"]["write_size"] == 10
+
+
 def test_dup2(parse):
     stats, _ = parse(OPEN_DATA + """
     100 0.000010 dup2(3, 5) = 5 <0.000010>
+    100 0.000010 write(5, "0123456789", 10) = 10 <0.000010>
+    """)
+    assert stats["data.bin"]["open_count"] == 2
+    assert stats["data.bin"]["write_size"] == 10
+
+
+def test_dup3(parse):
+    stats, _ = parse(OPEN_DATA + """
+    100 0.000010 dup3(3, 5, O_CLOEXEC) = 5 <0.000010>
     100 0.000010 write(5, "0123456789", 10) = 10 <0.000010>
     """)
     assert stats["data.bin"]["open_count"] == 2
