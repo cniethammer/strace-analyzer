@@ -189,6 +189,30 @@ RETURN_VALUE_RE = re.compile(r'\) += (-?[0-9]+)[^=]*$')
 STANDARD_STREAMS = {0: "stdin", 1: "stdout", 2: "stderr"}
 READ_SYSCALLS = {"read", "readv", "pread64", "preadv"}
 WRITE_SYSCALLS = {"write", "writev", "pwrite64", "pwritev"}
+# Syscalls copying data between two file descriptors inside the kernel, with
+# the positions of their input and output file descriptor arguments.
+COPY_SYSCALL_ARGS_RE = {
+  # splice(fd_in, off_in, fd_out, off_out, len, flags)
+  "splice": re.compile(r'splice\((?P<fd_in>[0-9]+), [^,]*, (?P<fd_out>[0-9]+), '),
+  # copy_file_range(fd_in, off_in, fd_out, off_out, len, flags)
+  "copy_file_range": re.compile(r'copy_file_range\((?P<fd_in>[0-9]+), [^,]*, (?P<fd_out>[0-9]+), '),
+  # sendfile(out_fd, in_fd, offset, count)
+  "sendfile": re.compile(r'sendfile\((?P<fd_out>[0-9]+), (?P<fd_in>[0-9]+), '),
+  "sendfile64": re.compile(r'sendfile64\((?P<fd_out>[0-9]+), (?P<fd_in>[0-9]+), '),
+  # tee(fd_in, fd_out, len, flags), duplicates pipe data without consuming it
+  "tee": re.compile(r'tee\((?P<fd_in>[0-9]+), (?P<fd_out>[0-9]+), '),
+}
+COPY_RESULT_RE = re.compile(r'\) += (?P<size>-?[0-9]+).*<(?P<time>[0-9]+\.[0-9]+)>')
+
+
+def record_io(file_access_stats, open_file_tracker, fd, kind, size, duration):
+  """Account a read or write (kind) of size bytes on fd."""
+  if not open_file_tracker.is_open(fd):
+    logging.warning("No Open file found for file descriptor {}".format(fd))
+    return
+  filename = open_file_tracker.get_filename(fd)
+  file_access_stats[filename][kind + '_times'].append(duration)
+  file_access_stats[filename][kind + '_sizes'].append(size)
 
 
 def parseInputFiles(inputfiles):
@@ -451,6 +475,22 @@ def parseInputFiles(inputfiles):
             file_access_stats[filename]['read_sizes'].append(int(match.group('read_size')))
           else:
             logging.warning("No Open file found for file descriptor {}".format(fd))
+        elif syscall in COPY_SYSCALL_ARGS_RE:
+          # Counted as a read from the input and a write to the output, both
+          # with the full duration of the call. At the end of the input
+          # (0 bytes) only the read is counted, like for read().
+          args = COPY_SYSCALL_ARGS_RE[syscall].search(line)
+          result = COPY_RESULT_RE.search(line)
+          if not args or not result or int(result.group('size')) < 0:
+            continue
+          size = int(result.group('size'))
+          duration = float(result.group('time'))
+          if syscall != "tee":
+            record_io(file_access_stats, open_file_tracker,
+                      int(args.group('fd_in')), 'read', size, duration)
+          if size > 0:
+            record_io(file_access_stats, open_file_tracker,
+                      int(args.group('fd_out')), 'write', size, duration)
         else:
           logging.debug("Unknown line type: '{}'".format(line.strip()))
           num_ignored_lines = num_ignored_lines + 1
