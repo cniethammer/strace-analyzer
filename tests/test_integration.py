@@ -80,6 +80,25 @@ def test_bash_echo_redirect(tmp_path):
 
 @requires_strace
 @requires_bash
+def test_bash_pipe_echo_cat(tmp_path):
+    """Trace the shell pipeline bash -c 'echo hi | cat > out.bin'.
+
+    bash creates a pipe and starts one child process for each side of it.
+    The echo child writes "hi\\n" into the pipe, the cat child copies it to
+    out.bin. Depending on the coreutils version cat copies with
+    read()/write() or with splice().
+    """
+    outfile = "out.bin"
+    log = run_strace(tmp_path, "bash", "-c", "echo hi | cat > " + outfile)
+    assert (tmp_path / outfile).read_text() == "hi\n"
+
+    stats, _ = parse_files(log)
+    out = stats[outfile]
+    assert out["write_size"] == 3
+
+
+@requires_strace
+@requires_bash
 def test_bash_pipe_fd_limit(tmp_path):
     """Trace bash -c 'ulimit -n 3; echo hi | cat'.
 
