@@ -14,7 +14,9 @@ OPEN_DATA = """
     'writev(3, [{iov_base="01234", iov_len=5}, {iov_base="56789", iov_len=5}], 2) = 10 <0.000020>',
     'pwrite64(3, "0123456789", 10, 200) = 10 <0.000020>',
     'pwritev(3, [{iov_base="01234", iov_len=5}, {iov_base="56789", iov_len=5}], 2, 200) = 10 <0.000020>',
-], ids=["write", "writev", "pwrite64", "pwritev"])
+    # used by glibc for pwritev() on current systems
+    'pwritev2(3, [{iov_base="01234", iov_len=5}, {iov_base="56789", iov_len=5}], 2, 200, 0) = 10 <0.000020>',
+], ids=["write", "writev", "pwrite64", "pwritev", "pwritev2"])
 def test_write_variants(parse, line):
     stats, _ = parse(OPEN_DATA + "    100 0.000010 " + line + "\n")
     f = stats["data.bin"]
@@ -40,3 +42,15 @@ def test_partial_write_counts_written_bytes(parse):
     100 0.000010 write(3, "0123456789"..., 100) = 10 <0.000020>
     """)
     assert stats["data.bin"]["write_size"] == 10
+
+
+@pytest.mark.parametrize("line", [
+    'write(3, "0123456789", 10) = -1 EAGAIN (Resource temporarily unavailable) <0.000020>',
+    'write(3, "0123456789", 10) = -1 EPIPE (Broken pipe) <0.000020>',
+    'write(3, "0123456789", 10) = -1 ENOSPC (No space left on device) <0.000020>',
+    'pwrite64(3, "0123456789", 10, 200) = -1 EINVAL (Invalid argument) <0.000020>',
+], ids=["EAGAIN", "EPIPE", "ENOSPC", "pwrite64-EINVAL"])
+def test_failed_write_is_not_counted(parse, line):
+    stats, _ = parse(OPEN_DATA + "    100 0.000010 " + line + "\n")
+    assert stats["data.bin"]["write_count"] == 0
+    assert stats["data.bin"]["write_size"] == 0
