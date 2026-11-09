@@ -189,8 +189,8 @@ RETURN_VALUE_RE = re.compile(r'\) += (-?[0-9]+)[^=]*$')
 STANDARD_STREAMS = {0: "stdin", 1: "stdout", 2: "stderr"}
 # Pseudo file for file descriptors whose origin is not part of the trace.
 UNKNOWN_FILE = "<unknown>"
-READ_SYSCALLS = {"read", "readv", "pread64", "preadv"}
-WRITE_SYSCALLS = {"write", "writev", "pwrite64", "pwritev"}
+READ_SYSCALLS = {"read", "readv", "pread64", "preadv", "preadv2"}
+WRITE_SYSCALLS = {"write", "writev", "pwrite64", "pwritev", "pwritev2"}
 # Syscalls copying data between two file descriptors inside the kernel, with
 # the positions of their input and output file descriptor arguments.
 COPY_SYSCALL_ARGS_RE = {
@@ -461,7 +461,7 @@ def parseInputFiles(inputfiles):
         elif syscall in WRITE_SYSCALLS:
           # logging.debug("WRITE(V)(:")
           match = re.search(
-                  r'(?P<difftime>[0-9]+\.[0-9]+) p?write(?:64|v)?\((?P<fd>[0-9]+), ?.*, (?P<size>[0-9]+)\).*= (?P<write_size>-?[0-9]+).*<(?P<write_time>[0-9]+\.[0-9]+)>',
+                  r'(?P<difftime>[0-9]+\.[0-9]+) p?write(?:64|v2?)?\((?P<fd>[0-9]+), ?.*, (?P<size>[0-9]+)\).*= (?P<write_size>-?[0-9]+).*<(?P<write_time>[0-9]+\.[0-9]+)>',
             line)
           # logging.debug("{0}".format(match.groupdict()))
           if int(match.group('write_size')) < 0:  # failed, e.g. -1 EAGAIN
@@ -476,7 +476,7 @@ def parseInputFiles(inputfiles):
         elif syscall in READ_SYSCALLS:
           # logging.debug("READ(V):")
           match = re.search(
-                  r'(?P<difftime>[0-9]+\.[0-9]+) p?read(?:64|v)?\((?P<fd>[0-9]+), ?.*, (?P<size>[0-9]+)\).*= (?P<read_size>-?[0-9]+).*<(?P<read_time>[0-9]+\.[0-9]+)>',
+                  r'(?P<difftime>[0-9]+\.[0-9]+) p?read(?:64|v2?)?\((?P<fd>[0-9]+), ?.*, (?P<size>[0-9]+)\).*= (?P<read_size>-?[0-9]+).*<(?P<read_time>[0-9]+\.[0-9]+)>',
             line)
           # logging.debug("{0}".format(match.groupdict()))
           if int(match.group('read_size')) < 0:  # failed, e.g. -1 EAGAIN
