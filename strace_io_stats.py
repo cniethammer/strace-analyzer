@@ -464,6 +464,8 @@ def parseInputFiles(inputfiles):
                   r'(?P<difftime>[0-9]+\.[0-9]+) p?write(?:64|v)?\((?P<fd>[0-9]+), ?.*, (?P<size>[0-9]+)\).*= (?P<write_size>-?[0-9]+).*<(?P<write_time>[0-9]+\.[0-9]+)>',
             line)
           # logging.debug("{0}".format(match.groupdict()))
+          if int(match.group('write_size')) < 0:  # failed, e.g. -1 EAGAIN
+            continue
           fd = int(match.group('fd'))
           if open_file_tracker.is_open(fd):
             filename = open_file_tracker.get_filename(fd)
@@ -477,6 +479,8 @@ def parseInputFiles(inputfiles):
                   r'(?P<difftime>[0-9]+\.[0-9]+) p?read(?:64|v)?\((?P<fd>[0-9]+), ?.*, (?P<size>[0-9]+)\).*= (?P<read_size>-?[0-9]+).*<(?P<read_time>[0-9]+\.[0-9]+)>',
             line)
           # logging.debug("{0}".format(match.groupdict()))
+          if int(match.group('read_size')) < 0:  # failed, e.g. -1 EAGAIN
+            continue
           fd = int(match.group('fd'))
           if open_file_tracker.is_open(fd):
             filename = open_file_tracker.get_filename(fd)
