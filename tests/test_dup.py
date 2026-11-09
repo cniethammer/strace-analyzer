@@ -82,3 +82,13 @@ def test_failed_duplication_is_ignored(parse):
     100 0.000010 dup3(3, 3, 0) = -1 EINVAL (Invalid argument) <0.000010>
     """)
     assert stats["data.bin"]["open_count"] == 1
+
+
+def test_duplicating_unknown_fd_does_not_crash(parse, caplog):
+    # e.g. a file descriptor inherited from outside of the trace
+    stats, _ = parse("""
+        100 0.000000 dup2(7, 1) = 1 <0.000010>
+        100 0.000010 write(1, "0123456789", 10) = 10 <0.000010>
+    """)
+    assert "file descriptor 7" in caplog.text
+    assert stats["stdout"]["write_count"] == 0
