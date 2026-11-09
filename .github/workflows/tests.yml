@@ -1,0 +1,33 @@
+name: tests
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  test:
+    # pinned instead of ubuntu-latest: the strace version determines the
+    # trace format (ubuntu-24.04: strace 6.8)
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        # oldest supported (RHEL 9 system Python), Ubuntu 24.04, newest
+        python-version: ["3.9", "3.12", "3.14"]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Install strace
+        run: sudo apt-get update && sudo apt-get install -y strace
+
+      - name: Install package with test dependencies
+        run: python -m pip install ".[test]"
+
+      - name: Run tests
+        run: python -m pytest
