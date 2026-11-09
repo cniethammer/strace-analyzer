@@ -300,6 +300,8 @@ def parseInputFiles(inputfiles):
           fd = int(match.group('fd'))
           if fd == -1:
             continue
+          if fd == fd1:  # dup2(fd, fd) only checks that fd is valid
+            continue
           filename = open_file_tracker.get_filename(fd1)
           open_file_tracker.register_open(filename, fd)
           if filename not in file_access_stats:
