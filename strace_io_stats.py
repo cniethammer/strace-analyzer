@@ -88,7 +88,6 @@ def new_file_access_stats_entry(filename):
   data = dict()
   data['filename'] = filename
   data['open_times'] = []
-  data['open_modes'] = []
   data['open_fds'] = []
   data['open_from'] = dict()
   data['write_times'] = []
@@ -124,69 +123,202 @@ class OpenFileTracker:
     return self.open_files[fd]
   def get_open_files(self):
     return self.open_files
+  def copy(self):
+    tracker = OpenFileTracker()
+    tracker.open_files = dict(self.open_files)
+    return tracker
+
+
+class ProcessTracker:
+  """File descriptor tables of the traced processes.
+
+  Each process has its own table. A child created by fork() or clone()
+  starts with a copy of its parent's table, threads (clone with
+  CLONE_FILES) share the table of their parent.
+  """
+  def __init__(self):
+    self.tables = dict()  # pid -> OpenFileTracker
+
+  def table(self, pid):
+    """Table of a process, created with the standard streams if unknown."""
+    if pid not in self.tables:
+      tracker = OpenFileTracker()
+      tracker.register_open("stdin", 0)
+      tracker.register_open("stdout", 1)
+      tracker.register_open("stderr", 2)
+      self.tables[pid] = tracker
+    return self.tables[pid]
+
+  def clone(self, parent, child, share_files):
+    parent_table = self.table(parent)
+    self.tables[child] = parent_table if share_files else parent_table.copy()
+
+  def exit(self, pid):
+    self.tables.pop(pid, None)
+
+  def get_open_files(self):
+    """Open files of all remaining processes as {(pid, fd): filename}."""
+    open_files = dict()
+    seen = set()
+    for pid, tracker in self.tables.items():
+      if id(tracker) in seen:  # table shared by threads
+        continue
+      seen.add(id(tracker))
+      for fd, filename in tracker.get_open_files().items():
+        open_files[(pid, fd)] = filename
+    return open_files
+
+
+# Process id (strace -f, None without) and name of the syscall at the start
+# of a line produced by strace -f -r -T, e.g.
+# "1234      0.000049 openat(AT_FDCWD, ...". Only this position is
+# considered, so syscall names inside string arguments are never matched.
+SYSCALL_NAME_RE = re.compile(r'^\s*(?:([0-9]+)\s+)?[0-9]+\.[0-9]+\s+(\w+)\(')
+# Process id at the start of a line (strace -f), None for traces without it.
+LINE_PID_RE = re.compile(r'^\s*([0-9]+)\s+[0-9]+\.[0-9]+\s')
+# Markers of interrupted syscalls, see parseInputFiles(). The optional space
+# after "resumed>" is printed by strace 4 only.
+UNFINISHED_SUFFIX = " <unfinished ...>"
+RESUMED_RE = re.compile(r'^\s*(?:([0-9]+)\s+)?[0-9]+\.[0-9]+\s+<\.\.\. \w+ resumed> ?')
+# End of a process: "1234 0.000010 +++ exited with 0 +++" or "+++ killed by ..."
+EXITED_RE = re.compile(r'^\s*(?:([0-9]+)\s+)?[0-9]+\.[0-9]+\s+\+\+\+ (?:exited|killed) ')
+# Syscalls creating a new process or thread, their return value is the new pid.
+CLONE_SYSCALLS = {"clone", "clone3", "fork", "vfork"}
+CLONE_START_RE = re.compile(r'^\s*(?:[0-9]+\s+)?[0-9]+\.[0-9]+\s+(?:clone3?|v?fork)\(')
+RETURN_VALUE_RE = re.compile(r'\) += (-?[0-9]+)[^=]*$')
+STANDARD_STREAMS = {0: "stdin", 1: "stdout", 2: "stderr"}
+# Pseudo file for file descriptors whose origin is not part of the trace.
+UNKNOWN_FILE = "<unknown>"
+READ_SYSCALLS = {"read", "readv", "pread64", "preadv", "preadv2"}
+WRITE_SYSCALLS = {"write", "writev", "pwrite64", "pwritev", "pwritev2"}
+# Syscalls copying data between two file descriptors inside the kernel, with
+# the positions of their input and output file descriptor arguments.
+COPY_SYSCALL_ARGS_RE = {
+  # splice(fd_in, off_in, fd_out, off_out, len, flags)
+  "splice": re.compile(r'splice\((?P<fd_in>[0-9]+), [^,]*, (?P<fd_out>[0-9]+), '),
+  # copy_file_range(fd_in, off_in, fd_out, off_out, len, flags)
+  "copy_file_range": re.compile(r'copy_file_range\((?P<fd_in>[0-9]+), [^,]*, (?P<fd_out>[0-9]+), '),
+  # sendfile(out_fd, in_fd, offset, count)
+  "sendfile": re.compile(r'sendfile\((?P<fd_out>[0-9]+), (?P<fd_in>[0-9]+), '),
+  "sendfile64": re.compile(r'sendfile64\((?P<fd_out>[0-9]+), (?P<fd_in>[0-9]+), '),
+  # tee(fd_in, fd_out, len, flags), duplicates pipe data without consuming it
+  "tee": re.compile(r'tee\((?P<fd_in>[0-9]+), (?P<fd_out>[0-9]+), '),
+}
+COPY_RESULT_RE = re.compile(r'\) += (?P<size>-?[0-9]+).*<(?P<time>[0-9]+\.[0-9]+)>')
+
+
+def record_io(file_access_stats, open_file_tracker, fd, kind, size, duration):
+  """Account a read or write (kind) of size bytes on fd."""
+  if not open_file_tracker.is_open(fd):
+    logging.warning("No Open file found for file descriptor {}".format(fd))
+    return
+  filename = open_file_tracker.get_filename(fd)
+  file_access_stats[filename][kind + '_times'].append(duration)
+  file_access_stats[filename][kind + '_sizes'].append(size)
 
 
 def parseInputFiles(inputfiles):
-  open_file_tracker = OpenFileTracker()
   file_access_stats = dict()
   unknown_calls = dict()
 
-  open_file_tracker.register_open("stdin", 0)
-  file_access_stats["stdin"] = new_file_access_stats_entry("stdin")
-  open_file_tracker.register_open("stdout", 1)
-  file_access_stats["stdout"] = new_file_access_stats_entry("stdout")
-  open_file_tracker.register_open("stderr", 2)
-  file_access_stats["stderr"] = new_file_access_stats_entry("stderr")
+  for filename in STANDARD_STREAMS.values():
+    file_access_stats[filename] = new_file_access_stats_entry(filename)
 
   num_ignored_lines = 0
   unfinished = dict()
 
   for inputfile in inputfiles:
     logging.info("Processing " + str(inputfile) + " ...")
+    # each input file contains independent processes, e.g. one MPI rank
+    processes = ProcessTracker()
     with open(inputfile, 'r') as fh:
       for lineno, line in enumerate(fh):
         # logging.debug("LINE {0}: {1}".format(lineno, line.strip()))
         if "ERESTARTSYS" in line:
           continue
-        if "exit_group" in line:
-          break
 
-        if "<unfinished ...>" in line:
-          pid = int(line.split()[0])
-          unfinished[pid] = line[:-len(" <unfinished ...>")].rstrip()
+        # Interrupted syscalls are split into two lines, which are joined
+        # again here, e.g. for strace >= 5:
+        #   1234 0.000010 read(3 <unfinished ...>
+        #   1234 0.000050 <... read resumed>, "abc", 4096) = 3 <0.000050>
+        # and for strace 4:
+        #   1234 0.000010 read(3,  <unfinished ...>
+        #   1234 0.000050 <... read resumed> "abc", 4096) = 3 <0.000050>
+        if line.rstrip("\n").endswith(UNFINISHED_SUFFIX):
+          pid_match = LINE_PID_RE.match(line)
+          pid = pid_match.group(1) if pid_match else None
+          unfinished[pid] = line.rstrip("\n")[:-len(UNFINISHED_SUFFIX)]
           continue
-        elif " resumed> " in line:
-          pid = int(line.split()[0])
-          rest = line[line.find(" resumed> ") + len(" resumed> "):].rstrip()
-          line = unfinished[pid] + rest
-          del unfinished[pid]
-        if "execve" in line:
+        resumed = RESUMED_RE.match(line)
+        if resumed:
+          pid = resumed.group(1)
+          if pid not in unfinished:
+            logging.debug("Resumed syscall without start: '{}'".format(line.strip()))
+            num_ignored_lines = num_ignored_lines + 1
+            continue
+          line = unfinished.pop(pid) + line[resumed.end():]
+
+        if line.endswith("+++\n"):
+          exited = EXITED_RE.match(line)
+          if exited:
+            processes.exit(exited.group(1))
+            continue
+
+        name_match = SYSCALL_NAME_RE.match(line)
+        pid, syscall = name_match.groups() if name_match else (None, None)
+        if pid not in processes.tables:
+          # A child may show up before the clone() of its parent returned.
+          # If exactly one clone() is pending, it belongs to that parent.
+          parents = [p for p, start in unfinished.items()
+                     if CLONE_START_RE.match(start)]
+          if len(parents) == 1:
+            processes.clone(parents[0], pid,
+                            "CLONE_FILES" in unfinished[parents[0]])
+        open_file_tracker = processes.table(pid)
+
+        if syscall in CLONE_SYSCALLS:
+          ret = RETURN_VALUE_RE.search(line)
+          if ret and int(ret.group(1)) > 0:
+            child = ret.group(1)
+            if child not in processes.tables:  # see above
+              processes.clone(pid, child, "CLONE_FILES" in line)
+        if syscall == "exit_group":
+          # only this process ends; with strace -f others continue
+          processes.exit(pid)
+          continue
+        elif syscall == "execve":
           # logging.debug("execve")
           match = re.search(
             r'(?P<difftime>[0-9]+\.[0-9]+) execve\((.*)\).*= (?P<fd>-?[0-9]+).*<(?P<open_time>[0-9]+\.[0-9]+)>', line)
           if match:
             continue
-        elif "dup2(" in line:
-          # logging.debug("dup2:")
+        elif syscall in ("dup", "dup2", "dup3"):
+          # dup(3) = 4, dup2(3, 5) = 5, dup3(3, 5, O_CLOEXEC) = 5
           match = re.search(
-            r'(?P<difftime>[0-9]+\.[0-9]+) dup2\((?P<fd1>[0-9]+), (?P<fd2>[0-9]+)\).*= (?P<fd>-?[0-9]+).*<(?P<open_time>[0-9]+\.[0-9]+)>',
+            r'(?P<difftime>[0-9]+\.[0-9]+) dup[23]?\((?P<fd1>[0-9]+)(?:, [^)]*)?\).*= (?P<fd>-?[0-9]+).*<(?P<open_time>[0-9]+\.[0-9]+)>',
             line)
           # logging.debug("{0}".format(match.groupdict()))
           fd1 = int(match.group('fd1'))
           fd = int(match.group('fd'))
           if fd == -1:
             continue
+          if fd == fd1:  # dup2(fd, fd) only checks that fd is valid
+            continue
+          if not open_file_tracker.is_open(fd1):
+            # e.g. inherited from outside of the trace: the call succeeded,
+            # so track both file descriptors as referring to an unknown file
+            logging.warning("Duplicating unrecognized file descriptor {0}".format(fd1))
+            open_file_tracker.register_open(UNKNOWN_FILE, fd1)
           filename = open_file_tracker.get_filename(fd1)
           open_file_tracker.register_open(filename, fd)
           if filename not in file_access_stats:
             file_access_stats[filename] = new_file_access_stats_entry(filename)
           file_access_stats[filename]['open_times'].append(float(match.group('open_time')))
-          file_access_stats[filename]['open_modes'].append(file_access_stats[filename]['open_modes'][-1])
           file_access_stats[filename]['open_fds'].append(fd)
           if inputfile not in file_access_stats[filename]['open_from']:
             file_access_stats[filename]['open_from'][inputfile] = 0
           file_access_stats[filename]['open_from'][inputfile] = file_access_stats[filename]['open_from'][inputfile] + 1
-        elif "open(" in line:
+        elif syscall == "open":
           # logging.debug("OPEN:")
           match = re.search(
             r'(?P<difftime>[0-9]+\.[0-9]+) open\(\"(?P<filename>.*)\", (?P<mode>.*)\).*= (?P<fd>-?[0-9]+).*<(?P<open_time>[0-9]+\.[0-9]+)>',
@@ -200,12 +332,11 @@ def parseInputFiles(inputfiles):
           if filename not in file_access_stats:
             file_access_stats[filename] = new_file_access_stats_entry(filename)
           file_access_stats[filename]['open_times'].append(float(match.group('open_time')))
-          file_access_stats[filename]['open_modes'].append(match.group('mode'))
           file_access_stats[filename]['open_fds'].append(fd)
           if inputfile not in file_access_stats[filename]['open_from']:
             file_access_stats[filename]['open_from'][inputfile] = 0
           file_access_stats[filename]['open_from'][inputfile] = file_access_stats[filename]['open_from'][inputfile] + 1
-        elif "openat(" in line:
+        elif syscall == "openat":
           # logging.debug("OPEN:")
           match = re.search(
             r'(?P<difftime>[0-9]+\.[0-9]+) openat\((?P<dirfd>.*), \"(?P<filename>.*)\", (?P<mode>.*)\).*= (?P<fd>-?[0-9]+).*<(?P<open_time>[0-9]+\.[0-9]+)>',
@@ -222,34 +353,35 @@ def parseInputFiles(inputfiles):
           if filename not in file_access_stats:
             file_access_stats[filename] = new_file_access_stats_entry(filename)
           file_access_stats[filename]['open_times'].append(float(match.group('open_time')))
-          file_access_stats[filename]['open_modes'].append(match.group('mode'))
           file_access_stats[filename]['open_fds'].append(fd)
           if inputfile not in file_access_stats[filename]['open_from']:
             file_access_stats[filename]['open_from'][inputfile] = 0
           file_access_stats[filename]['open_from'][inputfile] = file_access_stats[filename]['open_from'][inputfile] + 1
-        elif "fcntl(" in line:
+        elif syscall == "fcntl":
           # logging.debug("fcntl:")
+          # only F_DUPFD and F_DUPFD_CLOEXEC duplicate a file descriptor,
           match = re.search(
-            r'(?P<difftime>[0-9]+\.[0-9]+) fcntl\((?P<fd1>[0-9]+), .*, (?P<fd2>[0-9]+)\).*= (?P<ret>-?[0-9]+).*<(?P<open_time>[0-9]+\.[0-9]+)>',
+            r'(?P<difftime>[0-9]+\.[0-9]+) fcntl\((?P<fd1>[0-9]+), F_DUPFD(?:_CLOEXEC)?, [0-9]+\).*= (?P<ret>-?[0-9]+).*<(?P<open_time>[0-9]+\.[0-9]+)>',
             line)
           # logging.debug("{0}".format(match.groupdict()))
           if not match:
              continue
           fd1 = int(match.group('fd1'))
-          fd2 = int(match.group('fd2'))
-          if int(match.group('ret')) == -1:
+          # the new file descriptor is the return value, the third argument
+          # is only the lowest acceptable one
+          fd = int(match.group('ret'))
+          if fd == -1:
             continue
           filename = open_file_tracker.get_filename(fd1)
-          open_file_tracker.register_open(filename, fd2)
+          open_file_tracker.register_open(filename, fd)
           if filename not in file_access_stats:
             file_access_stats[filename] = new_file_access_stats_entry(filename)
           file_access_stats[filename]['open_times'].append(float(match.group('open_time')))
-          file_access_stats[filename]['open_modes'].append(file_access_stats[filename]['open_modes'][-1])
-          file_access_stats[filename]['open_fds'].append(fd2)
+          file_access_stats[filename]['open_fds'].append(fd)
           if inputfile not in file_access_stats[filename]['open_from']:
             file_access_stats[filename]['open_from'][inputfile] = 0
           file_access_stats[filename]['open_from'][inputfile] = file_access_stats[filename]['open_from'][inputfile] + 1
-        elif "eventfd2(" in line:
+        elif syscall == "eventfd2":
           # logging.debug("OPEN EVENTFD:")
           match = re.search(
             r'(?P<difftime>[0-9]+\.[0-9]+) eventfd2\((?P<mode>.*)\).*= (?P<fd>-?[0-9]+).*<(?P<open_time>[0-9]+\.[0-9]+)>',
@@ -263,9 +395,8 @@ def parseInputFiles(inputfiles):
           if filename not in file_access_stats:
             file_access_stats[filename] = new_file_access_stats_entry(filename)
           file_access_stats[filename]['open_times'].append(float(match.group('open_time')))
-          file_access_stats[filename]['open_modes'].append(match.group('mode'))
           file_access_stats[filename]['open_fds'].append(fd)
-        elif "socket(" in line:
+        elif syscall == "socket":
           # logging.debug("OPEN SOCKET:")
           match = re.search(
             r'(?P<difftime>[0-9]+\.[0-9]+) socket\((?P<mode>.*)\).*= (?P<fd>-?[0-9]+).*<(?P<open_time>[0-9]+\.[0-9]+)>',
@@ -279,9 +410,8 @@ def parseInputFiles(inputfiles):
           if filename not in file_access_stats:
             file_access_stats[filename] = new_file_access_stats_entry(filename)
           file_access_stats[filename]['open_times'].append(float(match.group('open_time')))
-          file_access_stats[filename]['open_modes'].append(match.group('mode'))
           file_access_stats[filename]['open_fds'].append(fd)
-        elif "socketpair(" in line:
+        elif syscall == "socketpair":
           # logging.debug("OPEN SOCKET PAIR:")
           match = re.search(
             r'(?P<difftime>[0-9]+\.[0-9]+) socketpair\((?P<mode>.*), \[(?P<fd1>[0-9]+), (?P<fd2>[0-9]+)\]\).*= (?P<ret>-?[0-9]+).*<(?P<open_time>[0-9]+\.[0-9]+)>',
@@ -297,14 +427,16 @@ def parseInputFiles(inputfiles):
           if filename not in file_access_stats:
             file_access_stats[filename] = new_file_access_stats_entry(filename)
           file_access_stats[filename]['open_times'].append(float(match.group('open_time')))
-          file_access_stats[filename]['open_modes'].append(match.group('mode'))
           file_access_stats[filename]['open_fds'].append([fd1, fd2])
-        elif "pipe(" in line:
+        elif syscall in ("pipe", "pipe2"):
           # logging.debug("OPEN PIPE:")
+          # pipe([3, 4]) = 0, pipe2([3, 4], O_CLOEXEC) = 0
           match = re.search(
-            r'(?P<difftime>[0-9]+\.[0-9]+) pipe\(\[(?P<fd1>[0-9]+), (?P<fd2>[0-9]+)\]\).*= (?P<ret>-?[0-9]+).*<(?P<open_time>[0-9]+\.[0-9]+)>',
+            r'(?P<difftime>[0-9]+\.[0-9]+) pipe2?\(\[(?P<fd1>[0-9]+), (?P<fd2>[0-9]+)\](?:, [^)]*)?\).*= (?P<ret>-?[0-9]+).*<(?P<open_time>[0-9]+\.[0-9]+)>',
             line)
           # logging.debug("{0}".format(match.groupdict()))
+          if not match:  # failed call, e.g. pipe2(0x7ffd..., 0) = -1 EMFILE
+            continue
           fd1 = int(match.group('fd1'))
           fd2 = int(match.group('fd2'))
           if match.group('ret') == -1:
@@ -316,7 +448,7 @@ def parseInputFiles(inputfiles):
             file_access_stats[filename] = new_file_access_stats_entry(filename)
           file_access_stats[filename]['open_times'].append(float(match.group('open_time')))
           file_access_stats[filename]['open_fds'].append([fd1, fd2])
-        elif "close(" in line:
+        elif syscall == "close":
           # logging.debug("CLOSE:")
           match = re.search(
             r'(?P<difftime>[0-9]+\.[0-9]+) close\((?P<fd>[0-9]+)\).*= (?P<ret>-?[0-9]+).*<(?P<close_time>[0-9]+\.[0-9]+)>',
@@ -329,12 +461,14 @@ def parseInputFiles(inputfiles):
           filename = open_file_tracker.get_filename(fd)
           file_access_stats[filename]['close_times'].append(float(match.group('close_time')))
           open_file_tracker.register_close(fd)
-        elif ("write(" in line or "writev(" in line or "write64(" in line) and not "process_vm_writev" in line:
+        elif syscall in WRITE_SYSCALLS:
           # logging.debug("WRITE(V)(:")
           match = re.search(
-                  r'(?P<difftime>[0-9]+\.[0-9]+) p?write(?:64|v)?\((?P<fd>[0-9]+), ?.*, (?P<size>[0-9]+)\).*= (?P<write_size>-?[0-9]+).*<(?P<write_time>[0-9]+\.[0-9]+)>',
+                  r'(?P<difftime>[0-9]+\.[0-9]+) p?write(?:64|v2?)?\((?P<fd>[0-9]+), ?.*, (?P<size>[0-9]+)\).*= (?P<write_size>-?[0-9]+).*<(?P<write_time>[0-9]+\.[0-9]+)>',
             line)
           # logging.debug("{0}".format(match.groupdict()))
+          if int(match.group('write_size')) < 0:  # failed, e.g. -1 EAGAIN
+            continue
           fd = int(match.group('fd'))
           if open_file_tracker.is_open(fd):
             filename = open_file_tracker.get_filename(fd)
@@ -342,12 +476,14 @@ def parseInputFiles(inputfiles):
             file_access_stats[filename]['write_sizes'].append(int(match.group('write_size')))
           else:
             logging.warning("No Open file found for file descriptor {}".format(fd))
-        elif ("read(" in line or "readv(" in line or "read64(" in line) and not "process_vm_readv" in line:
+        elif syscall in READ_SYSCALLS:
           # logging.debug("READ(V):")
           match = re.search(
-                  r'(?P<difftime>[0-9]+\.[0-9]+) p?read(?:64|v)?\((?P<fd>[0-9]+), ?.*, (?P<size>[0-9]+)\).*= (?P<read_size>-?[0-9]+).*<(?P<read_time>[0-9]+\.[0-9]+)>',
+                  r'(?P<difftime>[0-9]+\.[0-9]+) p?read(?:64|v2?)?\((?P<fd>[0-9]+), ?.*, (?P<size>[0-9]+)\).*= (?P<read_size>-?[0-9]+).*<(?P<read_time>[0-9]+\.[0-9]+)>',
             line)
           # logging.debug("{0}".format(match.groupdict()))
+          if int(match.group('read_size')) < 0:  # failed, e.g. -1 EAGAIN
+            continue
           fd = int(match.group('fd'))
           if open_file_tracker.is_open(fd):
             filename = open_file_tracker.get_filename(fd)
@@ -355,6 +491,22 @@ def parseInputFiles(inputfiles):
             file_access_stats[filename]['read_sizes'].append(int(match.group('read_size')))
           else:
             logging.warning("No Open file found for file descriptor {}".format(fd))
+        elif syscall in COPY_SYSCALL_ARGS_RE:
+          # Counted as a read from the input and a write to the output, both
+          # with the full duration of the call. At the end of the input
+          # (0 bytes) only the read is counted, like for read().
+          args = COPY_SYSCALL_ARGS_RE[syscall].search(line)
+          result = COPY_RESULT_RE.search(line)
+          if not args or not result or int(result.group('size')) < 0:
+            continue
+          size = int(result.group('size'))
+          duration = float(result.group('time'))
+          if syscall != "tee":
+            record_io(file_access_stats, open_file_tracker,
+                      int(args.group('fd_in')), 'read', size, duration)
+          if size > 0:
+            record_io(file_access_stats, open_file_tracker,
+                      int(args.group('fd_out')), 'write', size, duration)
         else:
           logging.debug("Unknown line type: '{}'".format(line.strip()))
           num_ignored_lines = num_ignored_lines + 1
@@ -371,22 +523,17 @@ def parseInputFiles(inputfiles):
             unknown_calls[callname]['times'].append(calltime)
             unknown_calls[callname]['count'] = unknown_calls[callname]['count'] + 1
 
+    # processes which did not exit within the trace
+    open_files = {key: filename
+                  for key, filename in processes.get_open_files().items()
+                  if STANDARD_STREAMS.get(key[1]) != filename}
+    if open_files:
+      logging.warning("There are open files at the end of {}:".format(inputfile))
+      for (pid, fd), filename in sorted(open_files.items(), key=str):
+        logging.warning("  {}[{}] (pid {})".format(filename, fd, pid))
+
   if num_ignored_lines > 0:
     logging.warning("Number of ignored lines: {0}".format(num_ignored_lines))
-  if open_file_tracker.is_open(0):
-    logging.warning("Ignoring open sdtin[0]")
-    open_file_tracker.register_close(0)
-  if open_file_tracker.is_open(1):
-    logging.warning("Ignoring open sdtout[1]")
-    open_file_tracker.register_close(1)
-  if open_file_tracker.is_open(2):
-    logging.warning("Ignoring open sdterr[2]")
-    open_file_tracker.register_close(2)
-  open_files = open_file_tracker.get_open_files()
-  if open_files:
-    logging.warning("There are open files at the end of file processing:")
-    for fd in open_files.keys():
-      logging.warning("  " + open_files[fd] + "[" + str(fd) + "]")
 
   return file_access_stats, unknown_calls
 
